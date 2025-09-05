@@ -23,7 +23,7 @@
     "standard": "^17.0.0",
     "tape-run": "^11.0.0",
     "@socketsupply/tapzero": "^0.8.0",
-    "uuid": "^9.0.0"
+    "uuid": "^12.0.0"
   },
   "standard": {
     "ignore": [

@@ -1,0 +1,15 @@
+[package]
+name = "giant"
+version = "0.1.0"
+edition = "2021"
+
+# Literally zero external dependencies
+[dependencies]
+
+[lib]
+name = "giant"
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"

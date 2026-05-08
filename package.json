@@ -1,0 +1,13 @@
+{
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "start:todomvc": "node test/todomvc/server.js",
+    "start:hn": "node test/hn/server.js",
+    "start:conduit": "node test/conduit/server.js",
+    "start:components": "node src/components/server.js",
+    "build": "node giant.compiler.js",
+    "node:perf": "node --expose-gc test/node/perf.js",
+    "node:test": "node test/node/index.js"
+  }
+}

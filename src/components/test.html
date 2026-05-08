@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GIANT • Component Test Runner</title>
+  <link rel="stylesheet" href="./index.css">
+  <link rel="stylesheet" href="./giant.css">
+  <style>
+    body { font-family: 'mono'; padding: 20px; max-width: 900px; margin: 0 auto; color: #333; }
+    h1 { border-bottom: 2px solid #eee; padding-bottom: 10px; }
+
+    .dashboard { display: flex; gap: 20px; margin-bottom: 20px; font-size: 1.2rem; }
+    .stat { padding: 10px 20px; border-radius: 6px; background: #f4f4f5; font-weight: bold; }
+    .stat.pass { background: #dcfce7; color: #166534; }
+    .stat.fail { background: #fee2e2; color: #991b1b; }
+
+    .suite { margin-top: 20px; padding: 15px; border: 1px solid #e4e4e7; border-radius: 6px; }
+    .suite h3 { margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 1px; color: #52525b; }
+
+    .test-pass { color: green; margin: 4px 0; }
+    .test-fail { color: red; font-weight: bold; margin: 4px 0; }
+
+    /* Hide the mount point unless debugging */
+    #test-mount {
+      margin-top: 40px;
+      padding: 20px;
+      border: 2px dashed #ccc;
+      min-height: 100px;
+    }
+
+    .icon {
+      filter: saturate(100) sepia(0.6);
+    }
+  </style>
+</head>
+<body>
+  <h1>GIANT Test Suite For Components</h1>
+
+  <div class="dashboard">
+    <div class="stat" id="stat-total">Total: 0</div>
+    <div class="stat pass" id="stat-passed">Passed: 0</div>
+    <div class="stat fail" id="stat-failed">Failed: 0</div>
+  </div>
+
+  <div id="results"></div>
+
+  <h3>Live Test Mount</h3>
+  <div id="test-mount"></div>
+
+  <script type="module" src="./test.js"></script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+{
+  "users": [
+    {
+      "username": "aldus",
+      "email": "aldus@giant.js",
+      "password": "password123",
+      "token": "jwt-aldus-123",
+      "bio": "Creator of GIANT. Minimalist engineer.",
+      "image": "https://api.dicebear.com/8.x/identicon/svg?seed=aldus",
+      "following": ["jaan"]
+    },
+    {
+      "username": "jaan",
+      "email": "jaan@jake.jake",
+      "password": "jaanjake",
+      "token": "jwt-jaan-456",
+      "bio": "I like to skateboard and write code.",
+      "image": "https://api.dicebear.com/8.x/identicon/svg?seed=jaan",
+      "following": []
+    }
+  ],
+  "articles": [
+    {
+      "slug": "giant-is-production-ready",
+      "title": "GIANT is Production Ready",
+      "description": "How to build a framework in 300 lines of code.",
+      "body": "It's just JavaScript. No build steps, no virtual DOM diffing bottlenecks, just pure prefix-matched DOM updates and explicit state tracking. By leveraging native Proxy objects and standard HTML element creation, GIANT achieves O(1) attribute updates and microscopic SSR serialization. Welcome to the future of vanilla-flavored web development.",
+      "tagList": ["javascript", "frameworks", "giant"],
+      "createdAt": "2026-04-30T11:00:00.000Z",
+      "updatedAt": "2026-04-30T11:00:00.000Z",
+      "author": {
+        "username": "aldus",
+        "bio": "Creator of GIANT. Minimalist engineer.",
+        "image": "https://api.dicebear.com/8.x/identicon/svg?seed=aldus",
+        "following": false
+      },
+      "favoritesCount": 42,
+      "favoritedBy": ["jaan"]
+    },
+    {
+      "slug": "how-to-train-your-dragon-2026",
+      "title": "How to train your dragon in 2026",
+      "description": "Ever wonder how?",
+      "body": "You have to believe. Also, you probably need a lot of fish. Dragons are notoriously difficult to feed on a standard software engineer's salary.",
+      "tagList": ["dragons", "training"],
+      "createdAt": "2026-04-29T09:30:00.000Z",
+      "updatedAt": "2026-04-29T09:30:00.000Z",
+      "author": {
+        "username": "jaan",
+        "bio": "I like to skateboard and write code.",
+        "image": "https://api.dicebear.com/8.x/identicon/svg?seed=jaan",
+        "following": false
+      },
+      "favoritesCount": 1,
+      "favoritedBy": ["aldus"]
+    },
+    {
+      "slug": "the-state-of-ssr-today",
+      "title": "The State of SSR Today",
+      "description": "Why Server-Side Rendering is still king for content.",
+      "body": "SEO, Time-To-Interactive, and baseline performance metrics all point to one thing: sending HTML over the wire is still the most efficient way to deliver content. Hydration overhead in massive frameworks is a known issue, which is why hybrid architectures like GIANT aim to merge the best of both worlds: pre-rendered HTML with targeted, state-driven client components.",
+      "tagList": ["ssr", "javascript", "performance"],
+      "createdAt": "2026-04-28T14:15:00.000Z",
+      "updatedAt": "2026-04-28T14:15:00.000Z",
+      "author": {
+        "username": "aldus",
+        "bio": "Creator of GIANT. Minimalist engineer.",
+        "image": "https://api.dicebear.com/8.x/identicon/svg?seed=aldus",
+        "following": false
+      },
+      "favoritesCount": 12,
+      "favoritedBy": []
+    }
+  ],
+  "comments": [
+    {
+      "id": 1,
+      "createdAt": "2026-04-30T11:30:00.000Z",
+      "updatedAt": "2026-04-30T11:30:00.000Z",
+      "body": "This framework is insanely fast.",
+      "articleSlug": "giant-is-production-ready",
+      "author": {
+        "username": "jaan",
+        "bio": "I like to skateboard and write code.",
+        "image": "https://api.dicebear.com/8.x/identicon/svg?seed=jaan",
+        "following": false
+      }
+    }
+  ],
+  "tags": ["javascript", "giant", "ssr", "performance", "dragons", "training"]
+}

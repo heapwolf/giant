@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GIANT Browser Perf Test (Improved)</title>
+  <link rel="stylesheet" href="./index.css">
+  <style>
+    #results { font-family: monospace; white-space: pre; }
+    .warning { color: #ff6b35; }
+    .good { color: #4caf50; }
+  </style>
+</head>
+<body>
+  <div id="results">Initializing statistically rigorous performance tests...</div>
+  <todo-app id="perf-app"></todo-app>
+
+  <script type="module">
+    globalThis.IS_PERF_TEST = true;
+    import { createRoot } from './giant.js'
+    import { TodoApp } from './index.js'
+
+    // CONFIGURATION
+    const SIZES = [50, 100, 200, 500, 1000, 2000, 5000, 10_000] // Linear progression for interpolation
+    const WARMUP_ITERATIONS = 5  // JIT warmup
+    const MEASURE_ITERATIONS = 25 // Statistical significance
+    const GC_SETTLE_TIME = 100 // Allow GC to settle between tests
+    const OUTLIER_THRESHOLD = 3 // MAD multiplier for outlier detection
+
+    // UTILITIES
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+    const forceGC = async () => {
+      if (globalThis.gc) {
+        globalThis.gc()
+        await sleep(GC_SETTLE_TIME)
+      }
+    }
+
+    const waitForFrame = () => new Promise(resolve => requestAnimationFrame(resolve))
+
+    const waitForIdle = () => new Promise(resolve => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(resolve, { timeout: 1000 })
+      } else {
+        setTimeout(resolve, 0)
+      }
+    })
+
+    const waitForPaint = () => new Promise(resolve => {
+      requestAnimationFrame(() => {
+        // First rAF fires right before the upcoming paint
+        requestAnimationFrame(() => {
+          // Second rAF fires right before the *next* paint,
+          // guaranteeing the previous one was committed to the screen.
+          setTimeout(resolve, 0); // Yield to macro-task queue
+        });
+      });
+    });
+
+    const makeTodos = count =>
+      Array.from({ length: count }, (_, i) => ({
+        id: i, title: `Item ${i}`, completed: false
+      }))
+
+    // STATISTICAL ANALYSIS
+    const getMedian = (arr) => {
+      const sorted = [...arr].sort((a, b) => a - b)
+      const mid = Math.floor(sorted.length / 2)
+      return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+    }
+
+    const getMAD = (arr) => {
+      const median = getMedian(arr)
+      const deviations = arr.map(x => Math.abs(x - median))
+      return getMedian(deviations)
+    }
+
+    const removeOutliers = (arr, threshold = OUTLIER_THRESHOLD) => {
+      const median = getMedian(arr)
+      const mad = getMAD(arr)
+      if (mad === 0) return arr // All values identical
+      return arr.filter(x => Math.abs(x - median) / mad < threshold)
+    }
+
+    const getStats = (arr) => {
+      const cleaned = removeOutliers(arr)
+      const median = getMedian(cleaned)
+      const mad = getMAD(cleaned)
+      const min = Math.min(...cleaned)
+      const max = Math.max(...cleaned)
+      const mean = cleaned.reduce((a, b) => a + b, 0) / cleaned.length
+      return { median, mad, min, max, mean, n: cleaned.length, outliers: arr.length - cleaned.length }
+    }
+
+    // PERFORMANCE MEASUREMENT with proper isolation
+    class PerformanceTest {
+      constructor(name) {
+        this.name = name
+        this.samples = []
+        this.memoryBefore = null
+        this.memoryAfter = null
+        this.longTasks = []
+      }
+
+      async measure(fn) {
+        // Settle browser state
+        await waitForIdle()
+        await forceGC()
+
+        // Memory snapshot
+        if (performance.memory) {
+          this.memoryBefore = performance.memory.usedJSHeapSize
+        }
+
+        // Long task detection
+        const longTaskObserver = 'PerformanceObserver' in window ? new PerformanceObserver(list => {
+          for (const entry of list.getEntries()) {
+            if (entry.duration > 50) { // >50ms = long task
+              this.longTasks.push(entry.duration)
+            }
+          }
+        }) : null
+
+        try {
+          longTaskObserver?.observe({ entryTypes: ['longtask'] })
+        } catch (e) {
+          // longtask not supported, continue
+        }
+
+        // Actual measurement
+        const mark1 = `${this.name}-start-${this.samples.length}`
+        const mark2 = `${this.name}-end-${this.samples.length}`
+
+        performance.mark(mark1)
+        const startJS = performance.now()
+
+        await fn()
+
+        const endJS = performance.now()
+        await waitForPaint()
+
+        performance.mark(mark2)
+        performance.measure(`${this.name}-${this.samples.length}`, mark1, mark2)
+
+        const measure = performance.getEntriesByName(`${this.name}-${this.samples.length}`)[0]
+        const totalTime = measure.duration
+        const jsTime = endJS - startJS
+
+        longTaskObserver?.disconnect()
+
+        // Memory snapshot
+        if (performance.memory) {
+          this.memoryAfter = performance.memory.usedJSHeapSize
+        }
+
+        this.samples.push({
+          total: totalTime,
+          js: jsTime,
+          layout: totalTime - jsTime,
+          memory: this.memoryAfter - (this.memoryBefore || 0),
+          longTasks: this.longTasks.length
+        })
+
+        // Cleanup
+        performance.clearMarks(mark1)
+        performance.clearMarks(mark2)
+        performance.clearMeasures(`${this.name}-${this.samples.length - 1}`)
+
+        return totalTime
+      }
+
+      getResults() {
+        const totals = this.samples.map(s => s.total)
+        const jsTimes = this.samples.map(s => s.js)
+        const layoutTimes = this.samples.map(s => s.layout)
+        const memDeltas = this.samples.map(s => s.memory)
+
+        return {
+          name: this.name,
+          total: getStats(totals),
+          js: getStats(jsTimes),
+          layout: getStats(layoutTimes),
+          memoryDelta: getStats(memDeltas),
+          longTaskCount: this.longTasks.length,
+          samples: this.samples
+        }
+      }
+    }
+
+    async function runPerf() {
+      if (document.readyState === 'loading') {
+        await new Promise(resolve => window.addEventListener('DOMContentLoaded', resolve, { once: true }))
+      }
+
+      await waitForIdle()
+      const app = document.querySelector('todo-app')
+      const resultsEl = document.getElementById('results')
+
+      if (!app) {
+        resultsEl.textContent = 'ERROR: .todoapp element not found'
+        return
+      }
+
+      const tests = {}
+
+      // Helper to get or create test
+      const getTest = (name) => tests[name] ??= new PerformanceTest(name)
+
+      console.log('🔥 Starting JIT warmup phase...')
+      resultsEl.textContent = '🔥 Warming up JIT compiler...'
+
+      // WARMUP PHASE - ensure JIT optimization
+      for (let warmup = 0; warmup < WARMUP_ITERATIONS; warmup++) {
+        for (const size of [50, 500]) { // Only warm up with small/medium
+          app.state.todos = []
+          await waitForPaint()
+          app.state.todos = makeTodos(size)
+          await waitForPaint()
+          app.state.todos = app.state.todos.map(t => ({ ...t, completed: !t.completed }))
+          await waitForPaint()
+        }
+      }
+
+      await forceGC()
+      console.log('OK Warmup complete, starting measurements...')
+
+      // MEASUREMENT PHASE
+      for (let iteration = 1; iteration <= MEASURE_ITERATIONS; iteration++) {
+        resultsEl.textContent = `⏱️  Running iteration ${iteration}/${MEASURE_ITERATIONS}...`
+        console.log(`\n📊 Iteration ${iteration}/${MEASURE_ITERATIONS}`)
+
+        for (const size of SIZES) {
+          // CRITICAL: Full reset between tests
+          app.state.todos = []
+          await waitForPaint()
+          await forceGC()
+
+          // Test 1: Initial render (empty -> N items)
+          await getTest(`${size} todos: initial render`).measure(async () => {
+            app.state.todos = makeTodos(size)
+          })
+
+          // Test 2: Toggle all (N state updates)
+          await getTest(`${size} todos: toggle all`).measure(async () => {
+            app.state.todos = app.state.todos.map(t => ({ ...t, completed: !t.completed }))
+          })
+
+          // Test 3: Append 1 (tests incremental update)
+          await getTest(`${size} todos: append 1`).measure(async () => {
+            app.state.todos = [
+              ...app.state.todos,
+              { id: app.state.todos.length, title: `Item ${app.state.todos.length}`, completed: false }
+            ]
+          })
+
+          // Test 4: Remove last (tests removal)
+          await getTest(`${size} todos: remove last`).measure(async () => {
+            app.state.todos = app.state.todos.slice(0, -1)
+          })
+
+          // Test 5: Reverse (tests reordering without keys - worst case)
+          await getTest(`${size} todos: reverse`).measure(async () => {
+            app.state.todos = [...app.state.todos].reverse()
+          })
+
+          // Test 6: Filter (50% removal)
+          await getTest(`${size} todos: filter 50%`).measure(async () => {
+            app.state.todos = app.state.todos.filter((_, i) => i % 2 === 0)
+          })
+        }
+
+        // Reset for batched test
+        app.state.todos = []
+        await waitForPaint()
+        await forceGC()
+
+        // Test: Batched writes (microtask coalescing test)
+        await getTest('Batched 1,000 state writes').measure(async () => {
+          for (let i = 0; i < 1000; i++) app.state.tick = i
+        })
+      }
+
+      // ANALYSIS & REPORTING
+      console.log('\n📈 Analyzing results...')
+      resultsEl.textContent = '📈 Analyzing results...'
+
+      const results = Object.values(tests).map(t => t.getResults())
+      const nodeCount = document.querySelectorAll('*').length
+
+      // Generate report
+      let report = `GIANT Browser Performance Analysis (${MEASURE_ITERATIONS} iterations, ${WARMUP_ITERATIONS} warmup)\n`
+      report += `${'='.repeat(90)}\n\n`
+      report += `Environment:\n`
+      report += `  User Agent: ${navigator.userAgent.slice(0, 80)}...\n`
+      report += `  Hardware Concurrency: ${navigator.hardwareConcurrency} cores\n`
+      report += `  Memory: ${performance.memory ? `${(performance.memory.jsHeapSizeLimit / 1048576).toFixed(0)}MB limit` : 'N/A'}\n`
+      report += `  Final DOM size: ${nodeCount.toLocaleString()} elements\n`
+      report += `  GC Available: ${typeof gc !== 'undefined' ? 'YES' : 'NO (run with --expose-gc)'}\n\n`
+
+      // Group by test type
+      const bySize = {}
+      results.forEach(r => {
+        const match = r.name.match(/^(\d+) todos: (.+)$/)
+        if (match) {
+          const [, size, test] = match
+          bySize[test] ??= {}
+          bySize[test][size] = r
+        }
+      })
+
+      for (const [testName, sizes] of Object.entries(bySize)) {
+        report += `\n${testName.toUpperCase()}\n${'-'.repeat(90)}\n`
+        report += `${'Size'.padEnd(10)} | ${'Total (ms)'.padEnd(15)} | ${'JS (ms)'.padEnd(15)} | ${'Layout (ms)'.padEnd(15)} | ${'Memory'.padEnd(12)} | Long\n`
+
+        Object.entries(sizes).sort((a, b) => Number(a[0]) - Number(b[0])).forEach(([size, result]) => {
+          const warn = result.total.median > 16.67 ? 'WARN ' : '  '
+          const longTaskWarn = result.longTaskCount > 0 ? 'WARN' : '✓'
+          report += `${warn}${size.padEnd(8)} | ${result.total.median.toFixed(2).padEnd(15)} | ${result.js.median.toFixed(2).padEnd(15)} | ${result.layout.median.toFixed(2).padEnd(15)} | ${((result.memoryDelta.median || 0) / 1024).toFixed(1).padEnd(10)}KB | ${longTaskWarn}\n`
+        })
+      }
+
+      // Batch test
+      const batchTest = results.find(r => r.name.includes('Batched'))
+      if (batchTest) {
+        report += `\n\nBATCHED WRITES (Microtask Coalescing Efficiency)\n${'-'.repeat(90)}\n`
+        report += `Total Time: ${batchTest.total.median.toFixed(2)}ms (${batchTest.total.mad.toFixed(2)}ms MAD)\n`
+        report += `Expected: ~1ms if perfectly batched, >100ms if not\n`
+        report += `Verdict: ${batchTest.total.median < 10 ? 'OK EXCELLENT' : batchTest.total.median < 50 ? 'WARN  ADEQUATE' : 'ERROR POOR'}\n`
+      }
+
+      // Performance scoring
+      report += `\n\nPERFORMANCE ASSESSMENT\n${'='.repeat(90)}\n`
+
+      const worst = Math.max(...results.map(r => r.total.median))
+      const longTaskTotal = results.reduce((acc, r) => acc + r.longTaskCount, 0)
+
+      report += `Worst case latency: ${worst.toFixed(2)}ms ${worst < 16.67 ? 'OK' : worst < 50 ? 'WARN' : 'ERROR'}\n`
+      report += `Long tasks detected: ${longTaskTotal} ${longTaskTotal === 0 ? 'OK' : 'WARN'}\n`
+      report += `Statistical confidence: ${results[0].total.n}/${MEASURE_ITERATIONS} samples (${results[0].total.outliers} outliers removed)\n`
+
+      // Recommendations
+      report += `\n\nRECOMMENDATIONS\n${'='.repeat(90)}\n`
+      if (worst > 16.67) {
+        report += `Operations exceed 60fps budget (16.67ms). Consider:\n`
+        report += `   - Virtualization for lists >1000 items\n`
+        report += `   - RequestIdleCallback for non-critical updates\n`
+        report += `   - Web Workers for heavy computations\n`
+      }
+      if (longTaskTotal > 0) {
+        report += ` Long tasks detected (>50ms). This blocks user input.\n`
+      }
+      if (!performance.memory) {
+        report += ` Run in Chrome with --enable-precise-memory-info for memory profiling\n`
+      }
+      if (typeof gc === 'undefined') {
+        report += ` Run with --expose-gc flag for accurate GC control\n`
+      }
+
+      resultsEl.textContent = report
+      console.log(report)
+
+      // Export raw data for further analysis
+      window.perfResults = results
+      console.log('Raw results available in window.perfResults')
+    }
+
+    runPerf().catch(err => {
+      console.error('Benchmark failed:', err)
+      document.getElementById('results').textContent = `ERROR: ${err.message}\n${err.stack}`
+    })
+  </script>
+</body>
+</html>

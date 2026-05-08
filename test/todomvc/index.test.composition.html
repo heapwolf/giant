@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GIANT • Composition Tests</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+    .child-btn { margin: 10px; padding: 10px; }
+  </style>
+</head>
+<body>
+  <h2>GIANT Composition & Isolation Test</h2>
+  <div id="results">Running tests...</div>
+  <hr>
+  <parent-app></parent-app>
+
+  <script type="module" src="./index.test.composition.js"></script>
+</body>
+</html>

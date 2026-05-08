@@ -1,0 +1,46 @@
+name: Deploy GIANT components to Pages
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Symlinks
+        run: |
+          rm -f src/giant.js src/giant.css src/components/giant.js src/components/giant.css
+          cp giant.js src/giant.js
+          cp giant.css src/giant.css
+          cp giant.js src/components/giant.js
+          cp giant.css src/components/giant.css
+
+      - name: Create Root Redirect
+        run: |
+          echo '<meta http-equiv="refresh" content="0; url=./src/components/index.html" />' > index.html
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

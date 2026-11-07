@@ -398,10 +398,13 @@
     background-color: var(--raised);
     color: var(--fg);
     border-color: color-mix(in oklch, var(--tone) max(var(--tone-border-alpha), 22%), transparent);
-    transition: border-color var(--duration-fast) ease, outline-color var(--duration-fast) ease;
+    transition: border-color var(--duration-fast) ease, outline-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
   }
   [style-emphasis="field"]::placeholder { color: color-mix(in oklch, var(--fg) 45%, transparent); }
-  [style-emphasis="field"]:hover:not(:disabled, [aria-disabled="true"]) { border-color: color-mix(in oklch, var(--tone) 40%, transparent); }
+  [style-emphasis="field"]:hover:not(:disabled, [aria-disabled="true"]) {
+    border-color: color-mix(in oklch, var(--tone) 40%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 8%, transparent);
+  }
   /* a field container draws the ring, so controls inside it (a ghost input in a group) don't add a second one */
   [style-emphasis="field"] :focus-visible { outline: none; }
   [style-emphasis="field"]:is(:focus-visible, :focus-within) {
@@ -427,6 +430,7 @@
       color var(--duration-fast) ease,
       border-color var(--duration-fast) ease,
       --_tint var(--duration-fast) ease,
+      box-shadow var(--duration-fast) ease,
       scale var(--duration-fast) cubic-bezier(0.2, 0, 0.2, 1);
   }
   :is(button, a[href], summary, label, [role="button"], [role="menuitem"], [role="menuitemcheckbox"],
@@ -436,6 +440,13 @@
   :is(button, a[href], summary, label, [role="button"], [role="menuitem"], [role="menuitemcheckbox"],
       [role="menuitemradio"], [role="option"], [role="tab"], [role="treeitem"], tr)[style-emphasis]:not([style-emphasis="field"]):active:not(:disabled, [aria-disabled="true"]) {
     --_tint: 18%;
+  }
+  /*
+   * Hover halo: the same 4px low-opacity ring in the element's tone marks everything
+   * clickable or editable: buttons, fields (inputs, dropdowns), knobs and checkbox/radio indicators.
+   */
+  :is(button:not([role]), [role="button"])[style-emphasis]:not([style-emphasis="field"], [style-emphasis="link"]):hover:not(:disabled, [aria-disabled="true"]) {
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 8%, transparent);
   }
   /* only plain buttons get the press scale (not switch tracks, tabs or menu items) */
   :is(button:not([role]), [role="button"])[style-emphasis]:not([style-emphasis="field"]):active:not(:disabled, [aria-disabled="true"]) {
@@ -450,7 +461,7 @@
     transition: translate var(--duration-fast) cubic-bezier(0.2, 0, 0.2, 1), scale var(--duration-fast) cubic-bezier(0.2, 0, 0.2, 1), box-shadow var(--duration-fast) ease;
   }
   :is(button, [style-interactive="clickable"], [style-interactive="drag"]):hover:not(:disabled) [style-emphasis="knob"] {
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 12%, transparent), var(--shadow-small);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 8%, transparent), var(--shadow-small);
   }
   :is(button, [style-interactive="clickable"], [style-interactive="drag"]):active:not(:disabled) [style-emphasis="knob"] {
     scale: 0.85;
@@ -463,7 +474,7 @@
   }
   [role="checkbox"]:not([aria-disabled="true"]):hover > [aria-hidden="true"][style-border],
   [style-visibility="invisible"]:not(:disabled):hover + [aria-hidden="true"][style-border] {
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 12%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 8%, transparent);
   }
   [role="checkbox"]:not([aria-disabled="true"]):hover > [aria-hidden="true"][style-border]:not([style-emphasis="solid"]),
   [style-visibility="invisible"]:not(:disabled):hover + [aria-hidden="true"][style-border]:not([style-emphasis="solid"]) {

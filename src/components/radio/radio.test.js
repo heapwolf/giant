@@ -7,7 +7,7 @@ const nextTick = () => new Promise(resolve => setTimeout(resolve, 20));
 let activeValue = 'option-1';
 
 const RadioTestApp = component.RadioTestApp(() => {
-  return div({ style: { padding: '20px' } },
+  return div({ 'style-pad': 'large' },
     Radio({
       id: 'test-radio-group',
       value: activeValue,
@@ -28,7 +28,6 @@ export async function testRadio(mountPoint, assert) {
 
   // Lookups
   const groupTrack = document.getElementById('test-radio-group').firstElementChild;
-  const itemWrapper2 = document.getElementById('item-2').firstElementChild;
 
   const input1 = document.getElementById('item-1').firstElementChild.querySelector('input');
   const input2 = document.getElementById('item-2').firstElementChild.querySelector('input');
@@ -81,18 +80,19 @@ export async function testRadio(mountPoint, assert) {
 
   const dot2 = input2.parentElement.querySelector('[data-radio-target="dot"]');
   assert(
-    dot2.style.transform === 'scale(1)' && dot2.style.opacity === '1',
-    'Physics: Visual dot is automatically scaled and faded in when active'
+    dot2.getAttribute('style-emphasis') === 'solid',
+    'Design: Visual dot is filled (style-emphasis="solid") when active'
   );
 
   // ==========================================
-  // --- JS PHYSICS TESTS ---
+  // --- DESIGN ATTRIBUTE TESTS ---
   // ==========================================
-  itemWrapper2.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }));
+  const circle1 = input1.parentElement.querySelector('[data-radio-target="circle"]');
   const circle2 = input2.parentElement.querySelector('[data-radio-target="circle"]');
+  const dot1 = input1.parentElement.querySelector('[data-radio-target="dot"]');
   assert(
-    circle2.style.transform === 'scale(0.92)',
-    'Physics: Pointer down triggers the tactile plunge effect via JS scale'
+    circle2.getAttribute('style-emphasis') === 'outline' && !circle1.hasAttribute('style-emphasis') && !dot1.hasAttribute('style-emphasis'),
+    'Design: Only the checked item carries the checked attributes'
   );
 
   // ==========================================

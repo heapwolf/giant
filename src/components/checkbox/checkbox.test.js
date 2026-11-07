@@ -21,15 +21,13 @@ const CheckboxTestApp = component.CheckboxTestApp(() => {
     lastChangeVal.value = isChecked;
   };
 
-  return div({ class: 'checkbox-test-wrapper', style: { display: 'flex', flexDirection: 'column', gap: '40px' } },
+  return div({ class: 'checkbox-test-wrapper', 'style-layout': 'stack', 'style-gap': 'xlarge' },
 
     section({ class: 'test-section' },
       h2('Standard Checkbox'),
       Checkbox({
         id: 'test-cb-standard',
         defaultChecked: false,
-        onCheckedChange: handleCheck,
-        onchange: handleCheck, // Fallback for native-style emitters
         onChange: handleCheck
       }, span('Standard Option')),
 
@@ -102,7 +100,7 @@ export async function testCheckbox(mountPoint, assert) {
 
   assert(
     getOutput() === 'true',
-    'Events: Checking the box fires the onCheckedChange callback with true'
+    'Events: Checking the box fires the onChange callback with true'
   );
 
   // 2. Click to uncheck

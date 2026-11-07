@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { html, component, createElement, signal } from '../../giant.js';
+import { html, component, createElement, signal, styles } from '../../giant.js';
 
 test('GIANT.JS Server-Side Rendering (SSR) Test Suite', async (t) => {
 
@@ -272,7 +272,7 @@ test('GIANT.JS Server-Side Rendering (SSR) Test Suite', async (t) => {
       'Start',
       [span('Nested'), null],
       undefined,
-      true, // Booleans convert to strings
+      true, // Booleans render nothing
       false,
       '', // Empty strings are ignored
       [['Deep']]
@@ -283,8 +283,7 @@ test('GIANT.JS Server-Side Rendering (SSR) Test Suite', async (t) => {
     assert.ok(rendered.startsWith('<div'), 'Should render wrapper');
     assert.ok(rendered.includes('Start'), 'Should render top-level text');
     assert.ok(rendered.includes('<span>Nested</span>'), 'Should flatten nested arrays');
-    assert.ok(rendered.includes('true'), 'Should render `true` as text');
-    assert.ok(rendered.includes('false'), 'Should render `false` as text');
+    assert.ok(!rendered.includes('true') && !rendered.includes('false'), 'Should drop booleans');
     assert.ok(rendered.includes('Deep'), 'Should flatten deeply nested arrays');
   });
 
@@ -486,13 +485,13 @@ test('GIANT.JS Server-Side Rendering (SSR) Test Suite', async (t) => {
 
   await t.test('26. Falsy and Edge-Case Data Types as Children', () => {
     const { div } = html;
-    // Giant.js ignores null/undefined/empty string, but converts booleans and numbers to strings
+    // Booleans, null, undefined and '' render nothing (so `cond && child` is safe); numbers render
     const el = div('Start', 0, false, null, undefined, '', NaN, 'End');
     const rendered = el.toString();
 
     assert.ok(
-      rendered.includes('Start0falseNaNEnd'),
-      'Should stringify numbers and booleans, while completely dropping null, undefined, and empty strings'
+      rendered.includes('Start0NaNEnd'),
+      'Should stringify numbers, while dropping booleans, null, undefined, and empty strings'
     );
   });
 
@@ -555,6 +554,51 @@ test('GIANT.JS Server-Side Rendering (SSR) Test Suite', async (t) => {
     assert.ok(
       rendered.includes('<slot></slot>'),
       'Should render standard children inside custom elements'
+    );
+  });
+  await t.test('31. style-* Design Attributes', () => {
+    const { div } = html;
+
+    assert.equal(
+      div({ 'style-pad': 'medium', 'style-tone': 'danger' }, 'x').toString(),
+      '<div style-pad="medium" style-tone="danger">x</div>',
+      'style-* attributes serialize as plain attributes'
+    );
+    assert.ok(styles.pad.includes('medium') && styles.tone.includes('danger'), 'styles is generated from giant.css');
+    assert.equal(styles.x, undefined, 'comment examples in giant.css are not picked up as values');
+
+    const HostStyled = component.HostStyled(() => [
+      { 'style-layout': 'stack', 'style-gap': 'small' },
+      div('inner')
+    ]);
+    const rendered = HostStyled().toString();
+    assert.ok(
+      rendered.includes('style-layout="stack"') && rendered.includes('style-gap="small"'),
+      'style-* host props render on the host element in SSR'
+    );
+  });
+
+  await t.test('32. Unknown style-* Values Warn Once', () => {
+    const warnings = [];
+    const original = console.warn;
+    console.warn = (msg) => warnings.push(msg);
+    try {
+      html.div({ 'style-pad': 'huge' });
+      html.div({ 'style-pad': 'huge' });
+      html.div({ 'style-paddding': 'small' });
+      html.div({ 'style-pad': 'small', 'style-tone': 'danger' });
+    } finally {
+      console.warn = original;
+    }
+    assert.equal(warnings.length, 2, 'one warning per unknown attribute/value pair, none for valid ones');
+    assert.match(warnings[0], /style-pad="huge".*Allowed: none, xsmall/);
+    assert.match(warnings[1], /Unknown style attribute "style-paddding"/);
+  });
+  await t.test('33. SSR Style Objects Use CSS Property Names', () => {
+    assert.equal(
+      html.div({ style: { maxWidth: '400px', '--x': '1', backgroundColor: 'var(--bg)' } }).toString(),
+      '<div style="max-width:400px;--x:1;background-color:var(--bg)"></div>',
+      'camelCase keys are hyphenated; custom properties are left alone'
     );
   });
 });

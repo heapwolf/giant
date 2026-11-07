@@ -1,299 +1,112 @@
-import { component, html, design, signal } from '../../../giant.js';
+import { component, html, signal } from '../../../giant.js';
+import { Tooltip } from '../tooltip/tooltip.js';
 
-const { input, div } = html;
+const { input, div, span } = html;
 
 const SIZES = {
-  sm: [design.typography.size0, design.spacing.px3, design.spacing.py1, 'h-9'],
-  md: [design.typography.size1, design.spacing.px3, design.spacing.py2, 'h-10'],
-  lg: [design.typography.size2, design.spacing.px4, design.spacing.py3, 'h-11'],
+  sm: { 'style-text': 'xsmall', 'style-pad-block': 'xsmall', 'style-pad-inline': 'small' },
+  md: { 'style-text': 'small', 'style-pad-block': 'small', 'style-pad-inline': 'small' },
+  lg: { 'style-text': 'medium', 'style-pad-block': 'small', 'style-pad-inline': 'medium' },
 };
 
 const VARIANTS = {
-  default: [
-    design.bg.inputBg,
-    design.fg.inputFg,
-    design.shape.border1,
-    design.border.inputBorder,
-    design.effect.shadow1,
-  ],
-  ghost: [
-    'bg-transparent',
-    design.shape.border0,
-    design.effect.shadow0,
-  ]
+  default: { 'style-emphasis': 'field', 'style-border': 'thin', 'style-surface': 'raised' },
+  ghost: { 'style-emphasis': 'ghost' },
 };
 
-export const Input = component.Input((props, ...children) => {
-  const {
-    type = 'text',
-    value = '',
-    variant = 'default',
-    size = 'md',
-    disabled = false,
-    invalid = false,
-    required = false,
-    id,
-    class: customClass = '',
-    style = {},
-    oninput,
-    onInput,
-    ...rest
-  } = props;
+export const Input = component.Input((props) => {
+  const { id, value = '', variant = 'default', size = 'md', invalid = false, errorMessage = '', required = false, disabled = false, oninput, ...rest } = props;
 
-  // --- State Signals ---
-  const valueSignal = signal.value(value !== undefined ? String(value) : '');
+  const text = signal.value(String(value));
   const prevValue = signal._prevValue(value);
-
-  const disabledSignal = signal.disabled(!!disabled);
-  const prevDisabled = signal._prevDisabled(disabled);
-
-  const invalidSignal = signal.invalid(!!invalid);
+  const isInvalid = signal.invalid(!!invalid);
   const prevInvalid = signal._prevInvalid(invalid);
+  const error = signal.errorMessage(errorMessage);
+  const prevError = signal._prevErrorMessage(errorMessage);
 
-  // --- Physics & Focus Signals ---
-  const isHovered = signal.isHovered(false);
-  const isActive = signal.isActive(false);
-  const isFocused = signal.isFocused(false);
-
-  // Sync props to internal signals when controlled externally
-  if (value !== undefined && String(value) !== prevValue.value) {
-    valueSignal.value = String(value);
-    prevValue.value = String(value);
-  }
-  if (disabled !== undefined && !!disabled !== prevDisabled.value) {
-    disabledSignal.value = !!disabled;
-    prevDisabled.value = !!disabled;
-  }
-  if (invalid !== undefined && !!invalid !== prevInvalid.value) {
-    invalidSignal.value = !!invalid;
-    prevInvalid.value = !!invalid;
-  }
-
-  // --- PUBLIC API METHODS ---
-  // Note: Programmatic API methods intentionally bypass disabled states.
-  const getValue = () => valueSignal.value;
-  const setValue = (val) => { valueSignal.value = String(val); };
-  const clear = () => { valueSignal.value = ''; };
-  const setInvalid = (st) => { invalidSignal.value = !!st; };
-  // --------------------------
+  if (value !== prevValue.value) text.value = String(prevValue.value = value);
+  if (invalid !== prevInvalid.value) isInvalid.value = !!(prevInvalid.value = invalid);
+  if (errorMessage !== prevError.value) error.value = prevError.value = errorMessage;
+  const showInvalid = isInvalid.value || !!error.value;
 
   const handleInput = (e) => {
-    if (disabledSignal.value) return e.preventDefault();
-
-    const target = e.target;
-    const start = target.selectionStart;
-    const end = target.selectionEnd;
-
-    valueSignal.value = target.value;
-    (oninput || onInput)?.(valueSignal.value, e);
-
+    const { target } = e;
+    const { selectionStart, selectionEnd } = target;
+    text.value = target.value;
+    // typing again dismisses the error
+    isInvalid.value = false;
+    error.value = '';
+    oninput?.(e, text.value);
+    // the re-render rewrites `value`; put the caret back where the user left it
+    // (setSelectionRange throws on email, number, … inputs)
     queueMicrotask(() => {
-      if (document.activeElement === target) {
-        target.setSelectionRange(start, end);
-      }
+      if (document.activeElement === target && /^(text|search|password|tel|url)$/.test(target.type)) target.setSelectionRange(selectionStart, selectionEnd);
     });
   };
 
-  // --- Physics Event Handlers ---
-  const handlePointerOver = () => {
-    if (!disabledSignal.value) isHovered.value = true;
-  };
-
-  const handlePointerOut = () => {
-    if (!disabledSignal.value) {
-      isHovered.value = false;
-      isActive.value = false;
-    }
-  };
-
-  const handlePointerDown = (e) => {
-    if (e.button !== 0 && e.pointerType === 'mouse') return;
-    if (!disabledSignal.value) isActive.value = true;
-  };
-
-  const handlePointerUp = () => {
-    if (!disabledSignal.value) isActive.value = false;
-  };
-
-  const handleFocus = () => {
-    if (!disabledSignal.value) isFocused.value = true;
-  };
-
-  const handleBlur = () => {
-    if (!disabledSignal.value) isFocused.value = false;
-  };
-
-  const BASE_CLASSES = [
-    design.layout.flex,
-    design.size.wFull,
-    design.shape.radius1,
-    design.typography.lineTight,
-    design.animation.transitionColors,
-    type === 'file' && 'file:border-0 file:bg-transparent file:text-sm file:font-medium file:cursor-pointer',
-    'placeholder:text-muted-foreground'
-  ];
-
-  const STATE_CLASSES = [
-    invalidSignal.value && variant !== 'ghost' ? design.border.dangerBorder : '',
-    disabledSignal.value ? [design.effect.opacity50, design.interaction.cursorNotAllowed] : '',
-    variant !== 'ghost' && [
-      design.state.focusVisibleEffectRing,
-      design.effect.outlineOffset2
-    ]
-  ];
-
-  const sizing = {
-    sm: { minHeight: '2.25rem', padding: '0.25rem 0.75rem' },
-    md: { minHeight: '2.5rem', padding: '0.5rem 0.75rem' },
-    lg: { minHeight: '2.75rem', padding: '0.75rem 1rem' }
-  }[size] || { minHeight: '2.5rem', padding: '0.5rem 0.75rem' };
-
-  // --- Physics Math ---
-  const currentScale = isActive.value ? 'scale(1)' : 'scale(1)';
-  const currentHalo = isHovered.value && !isActive.value && !isFocused.value && variant !== 'ghost'
-    ? '0 0 0 4px var(--color-bg-hover)'
-    : '';
-
-  const inlineStyle = variant === 'ghost'
-    ? {
-        outline: 'none', border: 'none', boxShadow: 'none', backgroundColor: 'transparent',
-        transform: currentScale,
-        transition: 'transform var(--animation-duration-fast) var(--animation-ease-standard)',
-        ...sizing, ...style
-      }
-    : {
-        borderStyle: 'solid',
-        backgroundColor: 'var(--color-input-bg)',
-        transform: currentScale,
-        boxShadow: currentHalo,
-        transition: 'transform var(--animation-duration-fast) var(--animation-ease-standard), box-shadow var(--animation-duration-fast) var(--animation-ease-standard)',
-        ...sizing,
-        ...style
-      };
-
   return [
-    // 1. Array Prefix: Expose Public API
-    getValue,
-    setValue,
-    clear,
-    setInvalid,
-
-    // 2. The DOM Tree
-    input({
-      ...rest,
+    // host methods must be named: giant exposes them on the element by key
+    {
+      getValue: () => text.value,
+      setValue: (val) => { text.value = String(val); },
+      clear: () => { text.value = ''; },
+      setInvalid: (st) => { isInvalid.value = !!st; },
+      // shows `msg` in a danger tooltip under the input; a falsy msg clears it
+      setError: (msg) => { isInvalid.value = !!msg; error.value = msg || ''; },
+    },
+    Tooltip({
+      content: id ? span({ id: `${id}-error` }, error.value) : error.value,
+      forceOpen: !!error.value,
+      disabled: !error.value,
+      variant: 'danger',
+      position: 'bottom',
+      'style-width': 'full',
+    }, input({
       id,
-      type,
-      value: valueSignal.value,
-      disabled: disabledSignal.value,
+      type: 'text',
+      'style-width': 'full',
+      'style-radius': 'small',
+      ...(SIZES[size] || SIZES.md),
+      ...(VARIANTS[variant] || VARIANTS.default),
+      ...(showInvalid && variant !== 'ghost' && { 'style-tone': 'danger' }),
+      ...rest,
+      value: text.value,
+      disabled,
       required,
-      'aria-invalid': invalidSignal.value ? 'true' : 'false',
-      'aria-disabled': disabledSignal.value ? 'true' : undefined,
+      'aria-invalid': String(showInvalid),
+      'aria-errormessage': id && error.value ? `${id}-error` : undefined,
+      'aria-disabled': disabled ? 'true' : undefined,
       'aria-required': required ? 'true' : undefined,
-
-      onpointerover: handlePointerOver,
-      onpointerout: handlePointerOut,
-      onpointerdown: handlePointerDown,
-      onpointerup: handlePointerUp,
-      onfocus: handleFocus,
-      onblur: handleBlur,
       oninput: handleInput,
-
-      class: [
-        BASE_CLASSES,
-        VARIANTS[variant] || VARIANTS.default,
-        STATE_CLASSES,
-        customClass
-      ],
-      style: inlineStyle
-    })
+    }))
   ];
 });
 
-// =========================================================
-// STRUCTURAL HELPERS
-// =========================================================
-
-export const InputGroup = component.InputGroup((props = {}, ...children) => {
-  const { class: customClass = '', invalid = false, disabled = false, style = {}, ...rest } = props;
-
-  // Migrate physics tracking to signals
-  const isHovered = signal.isHovered(false);
-  const isFocused = signal.isFocused(false);
-
-  const handleOver = () => { if (!disabled) isHovered.value = true; };
-  const handleOut = () => { if (!disabled) isHovered.value = false; };
-
-  // Use focusin/focusout because they bubble up from the child input!
-  const handleFocusIn = () => { if (!disabled) isFocused.value = true; };
-  const handleFocusOut = () => { if (!disabled) isFocused.value = false; };
-
-  const currentHalo = isHovered.value && !isFocused.value
-    ? '0 0 0 4px var(--color-bg-hover)'
-    : '';
-
-  return div({
+// a field container: draws the border, hover state and :focus-within ring for the ghost input inside
+export const InputGroup = component.InputGroup(({ invalid = false, disabled = false, ...rest } = {}, ...children) =>
+  div({
+    'style-layout': 'row',
+    'style-align': 'stretch',
+    'style-width': 'full',
+    'style-radius': 'small',
+    'style-border': 'thin',
+    'style-emphasis': 'field',
+    'style-overflow': 'hidden',
+    ...(invalid && { 'style-tone': 'danger' }),
+    ...(disabled && { 'style-interactive': 'disabled', 'aria-disabled': 'true' }),
     ...rest,
-    onpointerover: handleOver,
-    onpointerout: handleOut,
-    onfocusin: handleFocusIn,
-    onfocusout: handleFocusOut,
-    class: [
-      design.layout.flex,
-      design.layout.itemsCenter,
-      design.layout.relative,
-      design.size.wFull,
-      design.shape.radius1,
-      design.shape.border1,
-      design.bg.inputBg,
-      design.fg.inputFg,
-      invalid ? design.border.dangerBorder : design.border.inputBorder,
-      !disabled && !invalid ? design.state.focusWithinEffectRing : '',
-      !disabled && !invalid ? design.effect.outlineOffset2 : '',
-      disabled ? [design.effect.opacity50, design.interaction.cursorNotAllowed] : '',
-      customClass
-    ],
-    style: {
-      borderStyle: 'solid',
-      minHeight: '2.5rem',
-      boxShadow: currentHalo,
-      transition: 'box-shadow var(--animation-duration-fast) var(--animation-ease-standard), border-color var(--animation-duration-fast) var(--animation-ease-standard)',
-      ...style
-    }
-  }, ...children);
-});
+  }, ...children)
+);
 
-export const InputLeftAddon = component.InputLeftAddon((props, ...children) => {
-  const { class: customClass = '', ...rest } = props;
+const addon = (divider) => (props, ...children) => div({
+  'style-layout': 'row',
+  'style-justify': 'center',
+  'style-pad-inline': 'small',
+  'style-tone': 'muted',
+  'style-text': 'small',
+  'style-divider': divider,
+  ...props,
+}, ...children);
 
-  return div({
-    ...rest,
-    class: [
-      design.layout.flex,
-      design.layout.itemsCenter,
-      design.layout.justifyCenter,
-      design.spacing.px3,
-      design.fg.fgMuted,
-      design.typography.size1,
-      'border-r border-border shrink-0 self-stretch',
-      customClass
-    ]
-  }, ...children);
-});
-
-export const InputRightAddon = component.InputRightAddon((props, ...children) => {
-  const { class: customClass = '', ...rest } = props;
-
-  return div({
-    ...rest,
-    class: [
-      design.layout.flex,
-      design.layout.itemsCenter,
-      design.layout.justifyCenter,
-      design.spacing.px3,
-      design.fg.fgMuted,
-      design.typography.size1,
-      'border-l border-border shrink-0 self-stretch',
-      customClass
-    ]
-  }, ...children);
-});
+export const InputLeftAddon = component.InputLeftAddon(addon('end'));
+export const InputRightAddon = component.InputRightAddon(addon('start'));

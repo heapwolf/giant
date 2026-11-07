@@ -1,4 +1,4 @@
-import { component, createRoot, html, design } from '../../giant.js';
+import { component, createRoot, html } from '../../giant.js';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card.js';
 
 const { div, section, h2, button } = html;
@@ -35,6 +35,14 @@ const CardTestApp = component.CardTestApp(() => {
         class: 'my-custom-card-class',
         style: { backgroundColor: 'rgb(255, 0, 0)' }
       }, 'Custom styles test')
+    ),
+
+    // 3. Variants
+    section({ class: 'test-section' },
+      h2('Variants'),
+      Card({ id: 'card-outline', variant: 'outline' }, 'Outline'),
+      Card({ id: 'card-transparent', variant: 'transparent' }, 'Transparent'),
+      Card({ id: 'card-sunk', variant: 'sunk' }, 'Sunk')
     )
   );
 }, 'card-test-app');
@@ -56,34 +64,37 @@ export async function testCard(mountPoint, assert) {
   const footer = document.getElementById('card-footer');
 
   assert(
-    compCard.firstElementChild.style.borderStyle === 'solid',
-    'Card: Renders base container with explicit solid border style'
+    compCard.firstElementChild.getAttribute('style-border') === 'thin' &&
+    compCard.firstElementChild.getAttribute('style-surface') === 'raised',
+    'Card: Renders base container as a raised surface with a thin border'
   );
 
   assert(
-    header.firstElementChild.style.flexDirection === 'column',
-    'CardHeader: Renders with inline flex-direction column'
+    header.firstElementChild.getAttribute('style-layout') === 'stack',
+    'CardHeader: Renders as a vertical stack'
   );
 
   assert(
-    title.firstElementChild.tagName === 'H3' && title.firstElementChild.className.includes(design.spacing.m0),
-    'CardTitle: Renders as an h3 tag with margin reset classes'
+    title.firstElementChild.tagName === 'H3' && title.firstElementChild.getAttribute('style-margin') === 'none',
+    'CardTitle: Renders as an h3 tag with margin reset'
   );
 
   assert(
-    desc.firstElementChild.tagName === 'P' && desc.firstElementChild.className.includes(design.spacing.m0),
-    'CardDescription: Renders as a p tag with margin reset classes'
+    desc.firstElementChild.tagName === 'P' && desc.firstElementChild.getAttribute('style-margin') === 'none',
+    'CardDescription: Renders as a p tag with margin reset'
   );
 
   // Note: DOM properties for '0' usually return '0px'
   assert(
-    content.firstElementChild.style.paddingTop === '0px',
+    content.firstElementChild.style.paddingBlockStart === '0px',
     'CardContent: Overrides top padding to 0px to seamlessly follow header'
   );
 
   assert(
-    footer.firstElementChild.style.paddingTop === '0px' && footer.firstElementChild.className.includes(design.layout.flex),
-    'CardFooter: Applies flex layout and overrides top padding to 0px'
+    footer.firstElementChild.style.paddingBlockStart === '' &&
+    footer.firstElementChild.getAttribute('style-pad') === 'large' &&
+    footer.firstElementChild.getAttribute('style-layout') === 'row',
+    'CardFooter: Applies row layout with full padding'
   );
 
   // ==========================================
@@ -93,12 +104,39 @@ export async function testCard(mountPoint, assert) {
   const customInner = customCard.firstElementChild;
 
   assert(
-    customInner.className.includes('my-custom-card-class') && customInner.className.includes(design.effect.shadow1),
-    'Props: Properly merges custom classes alongside default design tokens'
+    customInner.className.includes('my-custom-card-class') && customInner.getAttribute('style-surface') === 'raised',
+    'Props: Properly merges custom classes alongside default style attributes'
   );
 
   assert(
-    customInner.style.backgroundColor === 'rgb(255, 0, 0)' && customInner.style.borderStyle === 'solid',
-    'Props: Properly merges custom inline styles without losing base inline styles'
+    customInner.style.backgroundColor === 'rgb(255, 0, 0)' && customInner.getAttribute('style-border') === 'thin',
+    'Props: Properly merges custom inline styles without losing base style attributes'
+  );
+
+  // ==========================================
+  // --- VARIANT TESTS ---
+  // ==========================================
+  const outline = document.getElementById('card-outline').firstElementChild;
+  const transparent = document.getElementById('card-transparent').firstElementChild;
+  const sunk = document.getElementById('card-sunk').firstElementChild;
+
+  assert(
+    outline.getAttribute('style-border') === 'thin' && !outline.hasAttribute('style-surface'),
+    'Variant: outline has a border and no surface'
+  );
+
+  assert(
+    !transparent.hasAttribute('style-border') && !transparent.hasAttribute('style-surface'),
+    'Variant: transparent has neither border nor surface'
+  );
+
+  assert(
+    sunk.getAttribute('style-surface') === 'muted' && !sunk.hasAttribute('style-border'),
+    'Variant: sunk is a borderless muted surface'
+  );
+
+  assert(
+    !outline.hasAttribute('variant') && compCard.firstElementChild.getAttribute('style-radius') === 'medium',
+    'Variant: the variant prop is not forwarded and every card has medium radius'
   );
 }

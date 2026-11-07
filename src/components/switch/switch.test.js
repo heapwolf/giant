@@ -12,13 +12,13 @@ export async function testSwitch(mountPoint, assert) {
     controlledSignal = signal.checkedState(true);
 
     return div(
-      { style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+      { 'style-layout': 'stack', 'style-gap': 'large' },
 
       // 1. Uncontrolled Switch
       Switch({
         id: 'sw-uncontrolled',
         defaultChecked: false,
-        onCheckedChange: (val) => { clickedState = val; }
+        onChange: (val) => { clickedState = val; }
       }),
 
       // 2. Disabled Switch
@@ -31,7 +31,7 @@ export async function testSwitch(mountPoint, assert) {
       Switch({
         id: 'sw-controlled',
         checked: controlledSignal.value,
-        onCheckedChange: (v) => { controlledSignal.value = v; }
+        onChange: (v) => { controlledSignal.value = v; }
       }),
 
       // 5. Switch with Children (Label)
@@ -69,7 +69,7 @@ export async function testSwitch(mountPoint, assert) {
   );
 
   assert(
-    btnDisabled.disabled === true && btnDisabled.style.cursor === 'not-allowed',
+    btnDisabled.disabled === true && disabledHost.getAttribute('style-interactive') === 'static',
     'Initialization: disabled=true correctly disables the underlying button'
   );
 
@@ -92,7 +92,16 @@ export async function testSwitch(mountPoint, assert) {
   assert(
     btnUncontrolled.getAttribute('aria-checked') === 'true' &&
     clickedState === true,
-    'Interaction: Clicking the switch toggles its state and fires onCheckedChange'
+    'Interaction: Clicking the switch toggles its state and fires onChange'
+  );
+
+  let changeDetail = null;
+  uncontrolledHost.addEventListener('change', (e) => { changeDetail = e.detail; }, { once: true });
+  uncontrolledHost.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await nextTick();
+  assert(
+    changeDetail?.checked === false && btnUncontrolled.getAttribute('aria-checked') === 'false',
+    'Interaction: A user toggle dispatches a bubbling change event with detail.checked'
   );
 
   disabledHost.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -103,31 +112,16 @@ export async function testSwitch(mountPoint, assert) {
   );
 
   // ==========================================
-  // --- PHYSICS ENGINE TESTS ---
+  // --- DESIGN ATTRIBUTE TESTS ---
   // ==========================================
-  // Hover
-  uncontrolledHost.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-  await nextTick();
+  // Hover/press/focus visuals are pure CSS (style-emphasis on the track button).
   assert(
-    thumbUncontrolled.style.boxShadow.includes('var(--color-bg-hover)'),
-    'Physics: pointerover smoothly applies a halo box-shadow to the thumb'
+    btnUncontrolled.getAttribute('style-emphasis') === (btnUncontrolled.getAttribute('aria-checked') === 'true' ? 'solid' : 'soft'),
+    'Design: track emphasis follows the checked state (solid when on, soft when off)'
   );
-
-  // Active/Press down
-  uncontrolledHost.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' }));
-  await nextTick();
   assert(
-    thumbUncontrolled.style.transform.includes('scale(0.85)'),
-    'Physics: pointerdown triggers the thumb "plunge" via CSS scale(0.85)'
-  );
-
-  // Release/Out
-  uncontrolledHost.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-  uncontrolledHost.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }));
-  await nextTick();
-  assert(
-    thumbUncontrolled.style.transform.includes('scale(1)'),
-    'Physics: pointerup/out accurately restores the thumb scale and halo'
+    thumbUncontrolled.style.translate.startsWith('100%') === (btnUncontrolled.getAttribute('aria-checked') === 'true'),
+    'Design: thumb position follows the checked state'
   );
 
   // ==========================================

@@ -72,7 +72,7 @@ const isOpen = (hostId) => {
   const itemInner = host.querySelector('[data-accordion-type="item"]');
   const contentInner = host.querySelector('[data-accordion-type="content"]');
 
-  return itemInner.getAttribute('data-state') === 'open' && contentInner.style.display !== 'none';
+  return itemInner.getAttribute('data-state') === 'open' && !contentInner.hidden;
 };
 
 // --- TEST RUNNER EXPORT ---

@@ -1,289 +1,153 @@
-import { component, html, design, signal } from '../../../giant.js';
+import { component, html, signal } from '../../../giant.js';
 
 const { div, button } = html;
 
+/**
+ * Tabs root (controlled via `value` + `onValueChange`, or uncontrolled via `defaultValue`).
+ * The host exposes setTab(value), getTab(), nextTab() and prevTab().
+ * @param {'horizontal'|'vertical'} [props.orientation='horizontal']
+ */
 export const Tabs = component.Tabs((props, ...children) => {
-  /**
-   * @function Tabs
-   * @description Stateful tabs root component with controlled/uncontrolled support.
-   *
-   * @param {Object} props
-   * @param {string} [props.value] - Controlled active tab value.
-   * @param {string} [props.defaultValue] - Initial uncontrolled active tab value.
-   * @param {(value: string) => void} [props.onValueChange] - Callback fired when active tab changes.
-   * @param {string} [props.class] - Additional CSS classes.
-   * @param {'horizontal'|'vertical'} [props.orientation='horizontal'] - Tab layout orientation.
-   * @param {'pill'|string} [props.variant='pill'] - Visual style variant.
-   * @param {...any} children - Tab list and content nodes.
-   */
-  const {
-    value,
-    defaultValue,
-    onValueChange,
-    class: customClass = '',
-    orientation = 'horizontal',
-    variant = 'pill',
-    ...rest
-  } = props;
+  const { value, defaultValue, onValueChange, orientation = 'horizontal', ...rest } = props;
+  const vertical = orientation === 'vertical';
 
-  // --- 1. STATE INITIALIZATION (Replaces this.state) ---
   const activeTab = signal.activeTab(value !== undefined ? value : defaultValue);
   const prevValue = signal._prevValue(value);
 
-  // --- 2. SYNC CONTROLLED STATE ---
   if (value !== undefined && value !== prevValue.value) {
     activeTab.value = value;
     prevValue.value = value;
   }
 
   const tabValues = [];
+  const isActive = (val) => activeTab.value != null && String(activeTab.value) === String(val);
 
-  // --- 3. API METHODS ---
-  const getTab = () => activeTab.value;
-
+  // controlled tabs only report the change; the parent updates `value`
   const setTab = (val) => {
-    activeTab.value = val;
-    if (typeof onValueChange === 'function') onValueChange(val);
+    if (val == null) return;
+    if (value === undefined) activeTab.value = val;
+    onValueChange?.(val);
   };
 
-  const nextTab = () => {
-    const idx = tabValues.indexOf(activeTab.value);
-    if (idx > -1 && idx < tabValues.length - 1) {
-      setTab(tabValues[idx + 1]);
-    } else if (tabValues.length) {
-      setTab(tabValues[0]);
-    }
+  // without a defaultValue, the first trigger becomes active
+  const register = (val) => {
+    if (val == null || tabValues.includes(val)) return;
+    tabValues.push(val);
+    if (value === undefined && (activeTab.value == null || activeTab.value === '')) activeTab.value = val;
   };
 
-  const prevTab = () => {
-    const idx = tabValues.indexOf(activeTab.value);
-    if (idx > 0) {
-      setTab(tabValues[idx - 1]);
-    } else if (tabValues.length) {
-      setTab(tabValues[tabValues.length - 1]);
-    }
+  // moves by `delta`, wrapping around the ends
+  const step = (delta) => {
+    const n = tabValues.length;
+    if (!n) return;
+    const i = tabValues.findIndex(isActive);
+    setTab(tabValues[i === -1 ? (delta > 0 ? 0 : n - 1) : (i + delta + n) % n]);
   };
 
-  /**
-   * @function syncNode
-   * @description Recursively injects active tab state into tab list, triggers, and content.
-   * Handles both Real DOM elements (Client) and VNodes (Server/Fallback).
-   */
+  const stateFor = (type, val) => {
+    if (type === 'list') return { 'style-layout': vertical ? 'stack' : 'inline' };
+    const active = isActive(val);
+    const shared = { 'data-state': active ? 'active' : 'inactive', tabindex: active ? '0' : '-1' };
+    if (type === 'content') return { ...shared, hidden: !active };
+    return {
+      ...shared,
+      'aria-selected': String(active),
+      'style-tone': active ? 'neutral' : 'muted',
+      'style-emphasis': active ? 'soft' : 'ghost'
+    };
+  };
+
+  // Injects the active state into tab lists, triggers and panels: real DOM nodes on the client, VNodes otherwise.
+  // Stops at a nested Tabs root, which syncs its own parts.
   const syncNode = (node) => {
-    if (!node) return node;
+    if (Array.isArray(node)) return node.map(syncNode);
+    if (node?.nodeType === 1) {
+      const type = node.getAttribute('data-tab-type');
+      const val = node.getAttribute('data-value');
+      if (type === 'root') return node;
 
-    // --- CLIENT SIDE: Synchronize Real DOM Nodes ---
-    if (node.nodeType === 1) {
-      if (node.getAttribute('role') === 'tablist') {
-        const flexDir = orientation === 'vertical' ? 'column' : 'row';
-        node.style.flexDirection = flexDir;
-      }
-
-      if (node.getAttribute('data-tab-type') === 'trigger') {
-        const val = node.getAttribute('data-value');
-        if (!tabValues.includes(val)) tabValues.push(val);
-
-        const isActive = activeTab.value === val;
-
-        node.setAttribute('data-state', isActive ? 'active' : 'inactive');
-        node.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        node.setAttribute('tabindex', isActive ? '0' : '-1');
-
-        node.style.color = isActive ? 'var(--color-fg)' : 'var(--color-fg-muted)';
-
-        if (variant === 'pill') {
-          node.style.backgroundColor = isActive ? 'var(--color-bg)' : 'transparent';
-          node.style.boxShadow = isActive ? 'var(--effect-shadow-1)' : 'none';
+      if (type) {
+        if (type === 'trigger') register(val);
+        for (const [k, v] of Object.entries(stateFor(type, val))) {
+          if (k === 'hidden') node.hidden = v;
+          else node.setAttribute(k, v);
         }
-
-        if (!node._hasTabClick) {
+        if (type === 'trigger' && !node._hasTabClick) {
           node._hasTabClick = true;
-          node.addEventListener('click', (e) => {
-            if (node.disabled) return;
-            setTab(val);
-          });
+          node.addEventListener('click', () => { if (!node.disabled) setTab(val); });
         }
       }
 
-      if (node.getAttribute('data-tab-type') === 'content') {
-        const val = node.getAttribute('data-value');
-        const isActive = activeTab.value === val;
-
-        node.setAttribute('data-state', isActive ? 'active' : 'inactive');
-        node.setAttribute('tabindex', isActive ? '0' : '-1');
-        node.style.display = isActive ? '' : 'none';
-      }
-
-      Array.from(node.children).forEach(child => syncNode(child));
+      Array.from(node.children).forEach((child) => syncNode(child));
       return node;
     }
 
-    // --- SERVER SIDE: Synchronize Virtual DOM Nodes ---
-    if (node._type) {
-      if (node._type === '#dom' && node.node) {
-        syncNode(node.node);
-        return node;
-      }
-
-      const clone = { ...node, attributes: { ...node.attributes } };
-      if (node.children) clone.children = [...node.children];
-
-      if (clone.attributes.role === 'tablist') {
-        const flexDir = orientation === 'vertical' ? 'column' : 'row';
-        clone.attributes.style = { ...clone.attributes.style, flexDirection: flexDir };
-      }
-
-      if (clone.attributes['data-tab-type'] === 'trigger') {
-        const val = clone.attributes['data-value'];
-        if (!tabValues.includes(val)) tabValues.push(val);
-
-        const isActive = activeTab.value === val;
-
-        clone.attributes['data-state'] = isActive ? 'active' : 'inactive';
-        clone.attributes['aria-selected'] = isActive ? 'true' : 'false';
-        clone.attributes.tabindex = isActive ? 0 : -1;
-
-        clone.attributes.style = {
-          ...clone.attributes.style,
-          color: isActive ? 'var(--color-fg)' : 'var(--color-fg-muted)'
-        };
-
-        if (variant === 'pill') {
-          clone.attributes.style.backgroundColor = isActive ? 'var(--color-bg)' : 'transparent';
-          clone.attributes.style.boxShadow = isActive ? 'var(--effect-shadow-1)' : 'none';
-        }
-
-        const originalOnClick = clone.attributes.onclick || clone.attributes.onClick;
-        clone.attributes.onclick = (e) => {
-          if (clone.attributes.disabled) return;
-          setTab(val);
-          if (typeof originalOnClick === 'function') originalOnClick(e);
-        };
-      }
-
-      if (clone.attributes['data-tab-type'] === 'content') {
-        const val = clone.attributes['data-value'];
-        const isActive = activeTab.value === val;
-
-        clone.attributes['data-state'] = isActive ? 'active' : 'inactive';
-        clone.attributes.tabindex = isActive ? 0 : -1;
-
-        clone.attributes.style = {
-          ...clone.attributes.style,
-          display: isActive ? '' : 'none'
-        };
-      }
-
-      if (clone.children) {
-        clone.children = clone.children.map(child => syncNode(child));
-      }
-
-      return clone;
+    if (!node?._type) return node;
+    if (node._type === '#dom') {
+      if (node.node) syncNode(node.node);
+      return node;
     }
 
-    return node;
+    const attributes = { ...node.attributes };
+    const { 'data-tab-type': type, 'data-value': val, onclick } = attributes;
+    if (type === 'root') return node;
+
+    if (type === 'trigger') {
+      register(val);
+      attributes.onclick = (e) => {
+        if (attributes.disabled) return;
+        setTab(val);
+        onclick?.(e);
+      };
+    }
+    if (type) Object.assign(attributes, stateFor(type, val));
+
+    return { ...node, attributes, children: node.children?.map((child) => syncNode(child)) };
   };
 
   return [
-    // --- 4. HOST DESCRIPTOR PATTERN ---
-    // Safely binds the API methods directly to the root element for external use
-    { setTab, getTab, nextTab, prevTab },
-
-    // --- 5. ROOT DOM ---
+    { setTab, getTab: () => activeTab.value, nextTab: () => step(1), prevTab: () => step(-1) },
     div(
       {
-        ...rest,
-        class: [design.layout.flex, customClass],
-        style: {
-          flexDirection: orientation === 'vertical' ? 'row' : 'column',
-          gap: orientation === 'vertical' ? '1rem' : '0',
-          ...rest.style
-        },
-        'data-orientation': orientation
+        'style-layout': vertical ? 'row' : 'stack',
+        'style-align': vertical ? 'start' : undefined,
+        'style-gap': vertical ? 'medium' : undefined
       },
-      ...children.map(child => syncNode(child))
+      rest,
+      { 'data-orientation': orientation, 'data-tab-type': 'root' },
+      ...children.map((child) => syncNode(child))
     )
   ];
 });
 
-export const TabsList = component.TabsList((props, ...children) => {
-  const { class: customClass = '', style = {}, ...rest } = props;
+export const TabsList = component.TabsList((props, ...children) => div(
+  { 'style-layout': 'inline', 'style-gap': 'xsmall', 'style-pad': 'xsmall', 'style-surface': 'muted', 'style-radius': 'medium' },
+  props,
+  { role: 'tablist', 'data-tab-type': 'list' },
+  ...children
+));
 
-  return div(
-    {
-      ...rest,
-      role: 'tablist',
-      class: [
-        design.layout.inlineFlex,
-        design.layout.itemsCenter,
-        design.layout.justifyCenter,
-        design.bg.bgMuted,
-        design.shape.radius2,
-        customClass
-      ],
-      style: {
-        padding: '0.25rem',
-        minHeight: '2.5rem',
-        ...style
-      }
-    },
-    ...children
-  );
-});
+// Tone/emphasis follow the active state (set by Tabs); role="tab" + style-emphasis gives hover, focus and disabled styling.
+export const TabsTrigger = component.TabsTrigger(({ value, ...rest }, ...children) => button(
+  {
+    'style-layout': 'inline',
+    'style-pad-block': 'xsmall',
+    'style-pad-inline': 'small',
+    'style-radius': 'small',
+    'style-tone': 'muted',
+    'style-emphasis': 'ghost',
+    'style-text': 'small',
+    'style-weight': 'medium',
+    'style-wrap': 'nowrap'
+  },
+  rest,
+  { type: 'button', role: 'tab', 'data-tab-type': 'trigger', 'data-value': value },
+  ...children
+));
 
-export const TabsTrigger = component.TabsTrigger((props, ...children) => {
-  const { value, class: customClass = '', disabled, style = {}, ...rest } = props;
-
-  return button(
-    {
-      ...rest,
-      type: 'button',
-      role: 'tab',
-      'data-tab-type': 'trigger',
-      'data-value': value,
-      disabled,
-      class: [
-        design.layout.inlineFlex,
-        design.layout.itemsCenter,
-        design.layout.justifyCenter,
-        design.typography.size1,
-        design.typography.weightMedium,
-        design.shape.radius1,
-        design.animation.transitionAll,
-        design.interaction.selectNone,
-        disabled ? [design.effect.opacity50, design.interaction.cursorNotAllowed] : design.interaction.cursorPointer,
-        design.state.focusVisibleEffectRing,
-        customClass
-      ],
-      style: {
-        padding: '0.25rem 0.75rem',
-        border: 'none',
-        backgroundColor: 'transparent',
-        flex: '1 1 auto',
-        ...style
-      }
-    },
-    ...children
-  );
-});
-
-export const TabsContent = component.TabsContent((props, ...children) => {
-  const { value, class: customClass = '', style = {}, ...rest } = props;
-
-  return div(
-    {
-      ...rest,
-      role: 'tabpanel',
-      'data-tab-type': 'content',
-      'data-value': value,
-      class: [
-        design.spacing.mt2,
-        design.state.focusVisibleEffectRing,
-        design.effect.outlineOffset2,
-        customClass
-      ],
-      style
-    },
-    ...children
-  );
-});
+export const TabsContent = component.TabsContent(({ value, ...rest }, ...children) => div(
+  { 'style-pad-block': 'small' },
+  rest,
+  { role: 'tabpanel', 'data-tab-type': 'content', 'data-value': value },
+  ...children
+));

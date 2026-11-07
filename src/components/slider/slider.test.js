@@ -60,8 +60,8 @@ export async function testSlider(mountPoint, assert) {
 
   const activeThumbInner = getThumbs()[0].firstElementChild;
   assert(
-    activeThumbInner.style.transform === 'scale(0.85)',
-    'Physics: Active thumb applies scale(0.85) "plunge" during drag'
+    getThumbs()[0].getAttribute('style-layer') === 'raised' && activeThumbInner.getAttribute('style-radius') === 'round',
+    'Design: Active thumb is raised above the others during drag'
   );
 
   window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));

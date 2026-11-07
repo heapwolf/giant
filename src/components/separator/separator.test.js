@@ -35,14 +35,14 @@ export async function testSeparator(mountPoint, assert) {
 
   assert(
     sepDefault.getAttribute('data-orientation') === 'horizontal' &&
-    sepDefault.style.height === '1px',
-    'Init: Renders horizontally by default, enforcing a 1px height constraint'
+    sepDefault.getAttribute('style-divider') === 'top',
+    'Init: Renders horizontally by default as a top divider line'
   );
 
   assert(
     sepVertical.getAttribute('data-orientation') === 'vertical' &&
-    sepVertical.style.width === '1px',
-    'Init: Renders vertically when explicitly set, enforcing a 1px width constraint'
+    sepVertical.getAttribute('style-divider') === 'start',
+    'Init: Renders vertically when explicitly set as a start divider line'
   );
 
   // ==========================================

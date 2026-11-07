@@ -18,12 +18,13 @@ const chartData = [
 
 const chartConfig = {
   metric1: { label: 'Primary Metric', color: 'rgb(255, 0, 0)' },
-  metric2: { label: 'Secondary Metric', color: 'rgb(0, 0, 255)' }
+  metric2: { label: 'Secondary Metric', color: 'rgb(0, 0, 255)' },
+  'Page Views': { color: 'rgb(0, 128, 0)' }
 };
 
 // --- TEST UI SETUP ---
 const ChartsTestApp = component.ChartsTestApp(() => {
-  return div({ class: 'charts-test-wrapper', style: { display: 'flex', flexDirection: 'column', gap: '40px' } },
+  return div({ class: 'charts-test-wrapper', 'style-layout': 'stack', 'style-gap': 'xxlarge' },
 
     // 1. Bar Chart
     section({ class: 'test-section' },
@@ -49,6 +50,16 @@ const ChartsTestApp = component.ChartsTestApp(() => {
           XAxis({ dataKey: 'category' }),
           Line({ dataKey: 'metric1' })
         )
+      )
+    ),
+
+    // 2b. Line Chart below minPoints
+    section({ class: 'test-section' },
+      h2('Line Chart (empty)'),
+      ChartLine({ 'data-testid': 'chart-line-empty', data: chartData.slice(0, 1), empty: 'Not enough data' },
+        XAxis({ dataKey: 'category' }),
+        Line({ dataKey: 'metric1' }),
+        ChartLegend()
       )
     ),
 
@@ -94,9 +105,7 @@ export async function testCharts(mountPoint, assert) {
   mountPoint.appendChild(appNode);
   await nextTick();
 
-  // ==========================================
-  // --- CSS VARIABLE INJECTION ---
-  // ==========================================
+  // CSS VARIABLE INJECTION
   const barContainerInner = appNode.querySelector('[data-testid="container-bar"]');
 
   assert(
@@ -106,13 +115,17 @@ export async function testCharts(mountPoint, assert) {
     'ChartContainer: Successfully injects config colors as CSS variables'
   );
 
-  // ==========================================
-  // --- BAR CHART TESTS ---
-  // ==========================================
+  assert(
+    barContainerInner.style.getPropertyValue('--color-page-views') === 'rgb(0, 128, 0)',
+    'ChartContainer: Sanitises config keys into valid CSS variable names'
+  );
+
+  // BAR CHART TESTS
   const barChartInner = appNode.querySelector('[data-testid="chart-bar"]');
   const barSvg = barChartInner.querySelector('svg');
   const barRects = barSvg.querySelectorAll('rect');
-  const barTexts = barSvg.querySelectorAll('text');
+  // x-axis labels are HTML overlays next to the SVG, so they don't stretch with it
+  const barLabels = barSvg.parentNode.querySelectorAll(':scope > [style-tone="muted"]');
 
   assert(
     barSvg !== null && barRects.length >= 4,
@@ -120,13 +133,11 @@ export async function testCharts(mountPoint, assert) {
   );
 
   assert(
-    barTexts.length === 2 && barTexts[0].textContent === 'A',
+    barLabels.length === 2 && barLabels[0].textContent === 'A',
     'ChartBars: Renders XAxis text labels correctly'
   );
 
-  // ==========================================
-  // --- LINE CHART TESTS ---
-  // ==========================================
+  // LINE CHART TESTS
   const lineChartInner = appNode.querySelector('[data-testid="chart-line"]');
   const polylines = lineChartInner.querySelectorAll('polyline');
 
@@ -135,9 +146,15 @@ export async function testCharts(mountPoint, assert) {
     'ChartLine: Generates SVG <polyline> with correct coordinate pairs'
   );
 
-  // ==========================================
-  // --- PIE CHART & INTERACTIVITY TESTS ---
-  // ==========================================
+  const emptyLine = appNode.querySelector('[data-testid="chart-line-empty"]');
+  assert(
+    emptyLine.querySelectorAll('polyline').length === 0 &&
+    emptyLine.textContent.includes('Not enough data') &&
+    !emptyLine.textContent.includes('metric1'),
+    'ChartLine: Below minPoints shows the empty state instead of lines, axis and legend'
+  );
+
+  // PIE CHART & INTERACTIVITY TESTS
   const pieChartInner = appNode.querySelector('[data-testid="chart-pie"]');
   const arcs = pieChartInner.querySelectorAll('path');
 
@@ -146,31 +163,30 @@ export async function testCharts(mountPoint, assert) {
     'ChartPie: Calculates angles and draws valid SVG <path> arc commands'
   );
 
-  // Simulate pointer enter on the first arc to test tooltip reactivity
-  arcs[0].dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+  // Hover is hit-tested from the pointer position: point inside slice A (0-144 degrees from the top)
+  const pieSvg = pieChartInner.querySelector('svg');
+  const angle = (72 - 90) * Math.PI / 180;
+  const inA = new DOMPoint(150 + 78 * Math.cos(angle), 150 + 78 * Math.sin(angle)).matrixTransform(pieSvg.getScreenCTM());
+  arcs[0].dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: inA.x, clientY: inA.y }));
   await nextTick();
 
-  // The tooltip is a div sibling to the SVG inside the targeted container
-  const tooltipDiv = Array.from(pieChartInner.children).find(el => el.tagName === 'DIV' && el.style.zIndex == '50');
+  const tooltipDiv = pieChartInner.querySelector('[style-layer="overlay"]');
 
   assert(
-    tooltipDiv !== undefined && tooltipDiv.textContent.includes('A') && tooltipDiv.textContent.includes('100'),
-    'ChartTooltip: Reactively renders tooltip overlay with correct data on pointerenter'
+    tooltipDiv !== null && tooltipDiv.textContent.includes('A') && tooltipDiv.textContent.includes('100'),
+    'ChartTooltip: Reactively renders tooltip overlay with correct data on pointermove'
   );
 
-  // Simulate pointer leave
-  arcs[0].dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }));
+  // Leaving the SVG (pointerout to an element outside it) clears the hover
+  arcs[0].dispatchEvent(new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body }));
   await nextTick();
 
-  const tooltipDivAfterLeave = Array.from(pieChartInner.children).find(el => el.tagName === 'DIV' && el.style.zIndex == '50');
   assert(
-    tooltipDivAfterLeave === undefined,
-    'ChartTooltip: Reactively unmounts tooltip on pointerleave'
+    pieChartInner.querySelector('[style-layer="overlay"]') === null,
+    'ChartTooltip: Reactively unmounts tooltip when the pointer leaves the chart'
   );
 
-  // ==========================================
-  // --- RADIAL & RADAR TESTS ---
-  // ==========================================
+  // RADIAL & RADAR TESTS
   const radialChartInner = appNode.querySelector('[data-testid="chart-radial"]');
   assert(
     radialChartInner.querySelectorAll('path').length > 0,

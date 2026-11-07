@@ -1,1 +1,1 @@
-giant.js
+../giant.js

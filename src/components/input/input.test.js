@@ -1,13 +1,15 @@
-import { component, createRoot, html, design } from '../../giant.js';
+import { component, createRoot, html } from '../../giant.js';
 import { Input, InputGroup, InputLeftAddon, InputRightAddon } from './input.js';
 
 const { div, section, h2, span } = html;
 
 const nextTick = () => new Promise(resolve => setTimeout(resolve, 20));
 
+let lastInput = null;
+
 // --- TEST UI SETUP ---
 const InputTestApp = component.InputTestApp(() => {
-  return div({ class: 'input-test-wrapper', style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+  return div({ class: 'input-test-wrapper', 'style-layout': 'stack', 'style-gap': 'large' },
 
     // 1. Basic / Default
     section({ class: 'test-section' },
@@ -26,7 +28,7 @@ const InputTestApp = component.InputTestApp(() => {
     // 3. Programmatic API
     section({ class: 'test-section' },
       h2('API Controlled Input'),
-      Input({ id: 'input-api', value: 'Initial API Value' })
+      Input({ id: 'input-api', value: 'Initial API Value', oninput: (e, v) => { lastInput = [e.type, v]; } })
     ),
 
     // 4. Input Group
@@ -34,7 +36,7 @@ const InputTestApp = component.InputTestApp(() => {
       h2('Input Group with Addons'),
       InputGroup({ id: 'input-group' },
         InputLeftAddon({}, span('https://')),
-        Input({ id: 'input-grouped', class: 'border-0 rounded-none shadow-none focus-visible:ring-0', style: { minHeight: '100%' } }),
+        Input({ id: 'input-grouped', variant: 'ghost' }),
         InputRightAddon({}, span('.com'))
       )
     )
@@ -52,7 +54,7 @@ export async function testInput(mountPoint, assert) {
   // --- DEFAULT RENDER TESTS ---
   // ==========================================
   const basicHost = document.getElementById('input-basic');
-  const basicInner = basicHost.firstElementChild; // The actual native <input>
+  const basicInner = basicHost.querySelector('input'); // the native <input>, inside the error tooltip wrapper
 
   assert(
     basicInner !== null && basicInner.tagName === 'INPUT',
@@ -65,8 +67,8 @@ export async function testInput(mountPoint, assert) {
   );
 
   assert(
-    basicInner.className.includes(design.bg.inputBg) && basicInner.className.includes(design.border.inputBorder),
-    'Style: Applies default variant design tokens correctly'
+    basicInner.getAttribute('style-emphasis') === 'field' && basicInner.getAttribute('style-border') === 'thin',
+    'Style: Applies default variant field attributes correctly'
   );
 
   // ==========================================
@@ -77,20 +79,20 @@ export async function testInput(mountPoint, assert) {
   const ghostHost = document.getElementById('input-ghost');
 
   assert(
-    disabledHost.firstElementChild.disabled === true &&
-    disabledHost.firstElementChild.getAttribute('aria-disabled') === 'true',
+    disabledHost.querySelector('input').disabled === true &&
+    disabledHost.querySelector('input').getAttribute('aria-disabled') === 'true',
     'Props: disabled prop locks the input and applies aria-disabled'
   );
 
   assert(
-    invalidHost.firstElementChild.getAttribute('aria-invalid') === 'true' &&
-    invalidHost.firstElementChild.className.includes(design.border.dangerBorder),
+    invalidHost.querySelector('input').getAttribute('aria-invalid') === 'true' &&
+    invalidHost.querySelector('input').getAttribute('style-tone') === 'danger',
     'Props: invalid prop sets aria-invalid and applies danger border CSS'
   );
 
   assert(
-    !ghostHost.firstElementChild.className.includes(design.bg.inputBg) &&
-    ghostHost.firstElementChild.className.includes('bg-transparent'),
+    ghostHost.querySelector('input').getAttribute('style-emphasis') === 'ghost' &&
+    !ghostHost.querySelector('input').hasAttribute('style-border'),
     'Props: ghost variant removes default backgrounds and borders'
   );
 
@@ -98,7 +100,7 @@ export async function testInput(mountPoint, assert) {
   // --- PROGRAMMATIC API TESTS ---
   // ==========================================
   const apiHost = document.getElementById('input-api');
-  const apiInner = apiHost.firstElementChild;
+  const apiInner = apiHost.querySelector('input');
 
   assert(
     apiHost.getValue() === 'Initial API Value',
@@ -128,7 +130,7 @@ export async function testInput(mountPoint, assert) {
   await nextTick();
 
   assert(
-    apiInner.getAttribute('aria-invalid') === 'true' && apiInner.className.includes(design.border.dangerBorder),
+    apiInner.getAttribute('aria-invalid') === 'true' && apiInner.getAttribute('style-tone') === 'danger',
     'API: setInvalid() triggers a DOM re-render with danger styles'
   );
 
@@ -144,6 +146,33 @@ export async function testInput(mountPoint, assert) {
   assert(
     apiHost.getValue() === 'User typed this',
     'Events: Native DOM input events properly sync back to the component\'s internal signal'
+  );
+
+  assert(
+    lastInput && lastInput[0] === 'input' && lastInput[1] === 'User typed this',
+    'Events: oninput receives (event, value)'
+  );
+
+  // Test setError(): danger tooltip under the input, linked via aria-errormessage
+  apiHost.setError('Required field');
+  await nextTick();
+
+  const errorNode = document.getElementById('input-api-error');
+  const apiInput = apiHost.querySelector('input');
+  assert(
+    errorNode && errorNode.textContent === 'Required field' &&
+    apiInput.getAttribute('aria-errormessage') === 'input-api-error' &&
+    apiInput.getAttribute('aria-invalid') === 'true',
+    'API: setError() shows the message and links it with aria-errormessage'
+  );
+
+  apiInput.dispatchEvent(new Event('input', { bubbles: true }));
+  await nextTick();
+
+  assert(
+    !document.getElementById('input-api-error') &&
+    apiHost.querySelector('input').getAttribute('aria-invalid') === 'false',
+    'Events: typing clears the error'
   );
 
   // Trigger an external prop re-render
@@ -163,7 +192,7 @@ export async function testInput(mountPoint, assert) {
   const groupedInput = document.getElementById('input-grouped');
 
   assert(
-    groupInner !== null && groupInner.className.includes(design.layout.flex),
+    groupInner !== null && groupInner.getAttribute('style-layout') === 'row',
     'InputGroup: Renders a flex container for the structural addons'
   );
 
@@ -173,7 +202,7 @@ export async function testInput(mountPoint, assert) {
   );
 
   assert(
-    groupedInput !== null && groupedInput.firstElementChild.tagName === 'INPUT',
+    groupedInput !== null && groupedInput.querySelector('input').tagName === 'INPUT',
     'InputGroup: Successfully embeds the core Input component'
   );
 }

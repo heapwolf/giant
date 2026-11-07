@@ -1,4 +1,4 @@
-import { component, createRoot, html, design } from '../../giant.js';
+import { component, createRoot, html } from '../../giant.js';
 import { Badge } from './badge.js';
 
 const { div, section, h2 } = html;
@@ -52,10 +52,15 @@ export async function testBadge(mountPoint, assert) {
     'Render: Properly renders children text'
   );
 
-  // CHANGED: Assert the presence of the design token classes
+  // Assert the variant's style attributes
   assert(
-    defaultInner.className.includes(design.bg.inverseBg) && defaultInner.className.includes(design.fg.inverseFg),
-    'Style: Applies default background color correctly'
+    defaultInner.getAttribute('style-tone') === 'accent' && defaultInner.getAttribute('style-emphasis') === 'soft',
+    'Style: Default variant is a soft accent badge'
+  );
+
+  assert(
+    defaultInner.getAttribute('style-case') === 'upper' && defaultInner.getAttribute('style-font') === 'mono',
+    'Style: Badges are uppercase monospace'
   );
 
   // ==========================================
@@ -69,16 +74,16 @@ export async function testBadge(mountPoint, assert) {
     'Props: Maps "destructive" variant prop to state correctly'
   );
 
-  // CHANGED: Assert the design token classes
+  // Assert the variant's style attributes
   assert(
-    destructiveBadge.firstElementChild.className.includes(design.bg.dangerBg),
-    'Style: Applies destructive background color correctly'
+    destructiveBadge.firstElementChild.getAttribute('style-tone') === 'danger' &&
+    destructiveBadge.firstElementChild.getAttribute('style-emphasis') === 'soft',
+    'Style: Destructive variant is a soft danger badge'
   );
 
   assert(
     outlineBadge.state.variant === 'outline' &&
-    outlineBadge.firstElementChild.className.includes(design.border.border) &&
-    !outlineBadge.firstElementChild.className.includes(design.bg.inverseBg),
+    outlineBadge.firstElementChild.getAttribute('style-emphasis') === 'outline',
     'Style: Applies outline variant specific styles'
   );
 
@@ -95,9 +100,9 @@ export async function testBadge(mountPoint, assert) {
     'API: setVariant() successfully updates the internal state'
   );
 
-  // CHANGED: Assert the design token classes
+  // Assert the variant's style attributes
   assert(
-    apiBadge.firstElementChild.className.includes(design.bg.bgMuted),
+    apiBadge.firstElementChild.getAttribute('style-emphasis') === 'soft',
     'API: setVariant() successfully triggers a DOM re-render with new styles'
   );
 

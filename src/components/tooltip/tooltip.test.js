@@ -14,7 +14,7 @@ export async function testTooltip(mountPoint, assert) {
         button({}, 'Top')
       ),
 
-      Tooltip({ id: 'tt-custom', delay: 0, position: 'bottom', padding: '16px', offset: 20, content: 'Custom Settings' },
+      Tooltip({ id: 'tt-custom', delay: 0, position: 'bottom', pad: 'medium', offset: 20, content: 'Custom Settings' },
         button({}, 'Custom')
       ),
 
@@ -24,6 +24,14 @@ export async function testTooltip(mountPoint, assert) {
 
       Tooltip({ id: 'tt-disabled', disabled: true, delay: 0, position: 'top', content: 'Hidden' },
         button({}, 'Disabled')
+      ),
+
+      Tooltip({ id: 'tt-forced', forceOpen: true, variant: 'danger', content: 'Required field' },
+        button({}, 'Forced')
+      ),
+
+      Tooltip({ id: 'tt-empty', delay: 0, content: '' },
+        button({}, 'Empty')
       )
     );
   });
@@ -60,7 +68,7 @@ export async function testTooltip(mountPoint, assert) {
 
   const customTooltip = customWrapper.querySelector('[role="tooltip"]');
   assert(
-    customTooltip !== null && customTooltip.style.padding === '16px',
+    customTooltip !== null && customTooltip.getAttribute('style-pad-inline') === 'medium',
     'Props: Tooltip securely mounts on hover and applies custom padding configurations'
   );
 
@@ -100,5 +108,28 @@ export async function testTooltip(mountPoint, assert) {
   assert(
     disabledWrapper.querySelector('[role="tooltip"]') === null,
     'Logic: disabled=true entirely blocks the mount sequence during hover interactions'
+  );
+
+  // ==========================================
+  // --- FORCE OPEN / VARIANT / EMPTY TESTS ---
+  // ==========================================
+  const forcedWrapper = document.getElementById('tt-forced').firstElementChild;
+  const forcedBubble = forcedWrapper.querySelector('[role="alert"]');
+  assert(
+    forcedBubble !== null && forcedBubble.textContent.includes('Required field'),
+    'Props: forceOpen shows the bubble without hover, and variant="danger" renders it as role="alert"'
+  );
+
+  assert(
+    forcedBubble !== null && forcedBubble.getAttribute('style-tone') === 'danger',
+    'Props: variant="danger" applies the danger tone'
+  );
+
+  const emptyWrapper = document.getElementById('tt-empty').firstElementChild;
+  emptyWrapper.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+  await nextTick();
+  assert(
+    emptyWrapper.querySelector('[role="tooltip"]') === null,
+    'Logic: An empty content prop never mounts a bubble'
   );
 }

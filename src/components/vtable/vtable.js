@@ -1,90 +1,61 @@
-import { html, design } from '../../../giant.js';
+import { html } from '../../../giant.js';
 
 const { div, table, thead, tbody, tfoot, tr, th, td, caption, span, svg, path } = html;
 
-// =========================================================
-// TABLE PRIMITIVES
-// =========================================================
+const PAD = { 'style-pad-block': 'small', 'style-pad-inline': 'medium' };
+const SORT_ICONS = { asc: 'm18 15-6-6-6 6', desc: 'm6 9 6 6 6-6' };
 
-export const VTable = (...args) => {
-  const { attributes, children } = div(...args);
-  const { class: customClass = '', dir, ...rest } = attributes;
-
-  return div(
-    { ...rest, class: [design.size.wFull, design.layout.overflowAuto, customClass], dir },
-    table({ class: [design.size.wFull, design.typography.size1, design.typography.alignStart], style: { borderCollapse: 'collapse', textIndent: 'initial', borderSpacing: 0 } }, ...children)
-  );
+// Each primitive accepts the same (attributes?, ...children) arguments as the html factories.
+const wrap = (factory, fn) => (...args) => {
+  const { attributes, children } = factory(...args);
+  return fn(attributes, children);
 };
 
-// Compound component properties attached to the main VTable function
-VTable.Header = (...args) => thead(...args);
+export const VTable = wrap(div, (attrs, children) => div(
+  { 'style-width': 'full', 'style-overflow': 'auto', ...attrs },
+  table({ 'style-width': 'full', 'style-text': 'small', 'style-text-align': 'start' }, ...children)
+));
 
-VTable.Body = (...args) => tbody(...args);
+VTable.Header = thead;
+VTable.Body = tbody;
 
-VTable.Footer = (...args) => {
-  const { attributes, children } = tfoot(...args);
-  const { class: customClass = '', style = {}, ...rest } = attributes;
+VTable.Footer = wrap(tfoot, (attrs, children) =>
+  tfoot({ 'style-surface': 'muted', 'style-weight': 'medium', 'style-divider': 'top', ...attrs }, ...children));
 
-  return tfoot(
-    { ...rest, class: [design.bg.bgMuted, design.typography.weightMedium, customClass], style: { borderTop: '1px solid var(--color-border-muted)', ...style } },
-    ...children
-  );
-};
+// Row dividers live on the cells: style-emphasis on the row would reset its border colour.
+VTable.Row = wrap(tr, ({ hover = true, ...attrs }, children) =>
+  tr({ 'style-emphasis': hover ? 'ghost' : undefined, ...attrs }, ...children));
 
-VTable.Row = (...args) => {
-  const { attributes, children } = tr(...args);
-  const { class: customClass = '', hover = true, style = {}, ...rest } = attributes;
+VTable.Head = wrap(th, ({ sortable, sortDirection, draggable, style = {}, ...attrs }, children) => th(
+  {
+    'style-weight': 'medium',
+    'style-tone': 'muted',
+    'style-interactive': draggable ? 'clickable' : 'static',
+    'style-position': 'sticky',
+    'style-inset': 'top',
+    'style-layer': 'raised',
+    'style-surface': 'base',
+    ...PAD,
+    ...attrs,
+    draggable,
+    // TODO(style): collapsed-table borders don't stick with a sticky header, so style-divider can't be used here;
+    // a sticky-safe divider (e.g. `style-divider="bottom-inset"`) would replace this inset shadow.
+    style: { boxShadow: 'inset 0 -1px 0 var(--border)', ...style }
+  },
+  div(
+    { 'style-layout': 'row', 'style-gap': 'small' },
+    span({ 'style-flex': 'grow' }, ...children),
+    sortable ? svg(
+      {
+        viewBox: '0 0 24 24', width: '16', height: '16', fill: 'none', stroke: 'currentColor', 'stroke-width': 2,
+        'style-tone': sortDirection ? undefined : 'muted'
+      },
+      path({ d: SORT_ICONS[sortDirection] || 'm7 15 5 5 5-5M7 9l5-5 5 5' })
+    ) : null
+  )
+));
 
-  return tr(
-    {
-      ...rest,
-      class: [hover ? design.state.hoverColorBg : '', customClass],
-      style: { borderBottom: '1px solid var(--color-border-muted)', ...style }
-    },
-    ...children
-  );
-};
+VTable.Cell = wrap(td, (attrs, children) => td({ ...PAD, 'style-divider': 'bottom', ...attrs }, ...children));
 
-VTable.Head = (...args) => {
-  const { attributes, children } = th(...args);
-  const { class: customClass = '', sortable, sortDirection, draggable, style = {}, ...rest } = attributes;
-
-  const innerContent = [span({ style: { flex: 1 } }, ...children)];
-
-  if (sortable) {
-    const iconPath = sortDirection === 'asc' ? 'm18 15-6-6-6 6' : sortDirection === 'desc' ? 'm6 9 6 6 6-6' : 'm7 15 5 5 5-5M7 9l5-5 5 5';
-    innerContent.push(svg(
-      { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, style: { width: '1rem', height: '1rem', opacity: sortDirection ? 1 : 0.3 } },
-      path({ d: iconPath })
-    ));
-  }
-
-  return th(
-    {
-      ...rest,
-      draggable,
-      class: [design.typography.weightMedium, design.fg.fgMuted, design.typography.alignStart, design.interaction.selectNone, draggable ? design.interaction.cursorPointer : '', customClass],
-      style: {
-        padding: '0.75rem 1rem', verticalAlign: 'middle',
-        position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'var(--color-surface)',
-        boxShadow: 'inset 0 -1px 0 var(--color-border-muted)',
-        ...style
-      }
-    },
-    div({ class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2] }, ...innerContent)
-  );
-};
-
-VTable.Cell = (...args) => {
-  const { attributes, children } = td(...args);
-  const { class: customClass = '', style = {}, ...rest } = attributes;
-
-  return td({ ...rest, class: customClass, style: { padding: '0.75rem 1rem', verticalAlign: 'middle', ...style } }, ...children);
-};
-
-VTable.Caption = (...args) => {
-  const { attributes, children } = caption(...args);
-  const { class: customClass = '', style = {}, ...rest } = attributes;
-
-  return caption({ ...rest, class: [design.fg.fgMuted, design.typography.size0, customClass], style: { paddingTop: '1rem', paddingBottom: '1rem', ...style } }, ...children);
-};
+VTable.Caption = wrap(caption, (attrs, children) =>
+  caption({ 'style-tone': 'muted', 'style-text': 'xsmall', 'style-pad-block': 'medium', ...attrs }, ...children));

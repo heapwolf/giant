@@ -36,6 +36,12 @@ const DropdownTestApp = component.DropdownTestApp(() => {
         Dropdown.Item({ value: 'one' }, 'Option 1'),
         Dropdown.Item({ value: 'two' }, 'Option 2')
       )
+    ),
+
+    section({ class: 'test-section' },
+      h2('Variants'),
+      Dropdown({ id: 'dd-invalid', invalid: true, size: 'lg' }, Dropdown.Item({ value: 'a' }, 'A')),
+      Dropdown({ id: 'dd-ghost', variant: 'ghost', invalid: true }, Dropdown.Item({ value: 'a' }, 'A'))
     )
 
   );
@@ -148,4 +154,38 @@ export async function testDropdown(mountPoint, assert) {
   apiHost.toggle();
   await nextTick();
   assert(document.getElementById('dd-api-content') === null, 'API: toggle() successfully closes an open dropdown');
+
+  // ==========================================
+  // --- OUTSIDE CLICK ---
+  // ==========================================
+  apiHost.open();
+  await nextTick();
+  document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await nextTick();
+  assert(document.getElementById('dd-api-content') === null, 'Interaction: Clicking outside closes an open dropdown');
+
+  // ==========================================
+  // --- VARIANTS, SIZES & INVALID ---
+  // ==========================================
+  const invalidTrigger = document.getElementById('dd-invalid-trigger');
+  const ghostTrigger = document.getElementById('dd-ghost-trigger');
+
+  assert(
+    singleTrigger.getAttribute('style-emphasis') === 'field' && singleTrigger.getAttribute('style-pad-block') === 'small',
+    'Styles: Default trigger is a medium field'
+  );
+
+  assert(
+    invalidTrigger.getAttribute('style-tone') === 'danger' &&
+    invalidTrigger.getAttribute('aria-invalid') === 'true' &&
+    invalidTrigger.getAttribute('style-pad-block') === 'medium',
+    'Styles: invalid sets the danger tone and aria-invalid; size="lg" increases padding'
+  );
+
+  assert(
+    ghostTrigger.getAttribute('style-emphasis') === 'ghost' &&
+    !ghostTrigger.hasAttribute('style-border') &&
+    !ghostTrigger.hasAttribute('style-tone'),
+    'Styles: variant="ghost" drops the field border and ignores the invalid tone'
+  );
 }

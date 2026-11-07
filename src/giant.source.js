@@ -1,11 +1,14 @@
 /**
  * # GIANT.JS BEST PRACTICES
  *
- * - IMPORTS: `import { component, html, signal, design } from './giant.js';`
+ * - IMPORTS: `import { component, html, signal } from './giant.js';`
  * - HTML TAGS: Destructure from `html` object (e.g., `const { div, p } = html;`).
  * - COMPONENTS: Wrap in `component.Name((props, ...children) => { ... })`. Async/Generators natively supported.
  * - STATE: ALWAYS use signals (`const x = signal.x(init)`). Read/mutate via `x.value`. DO NOT use `this`.
  * - EVENTS: Use lowercase inline handlers (e.g., `onclick`, `onpointerover`).
+ * - STYLING: Use `style-*` attributes from giant.css (e.g. `'style-pad': 'medium'`, `'style-tone': 'danger'`).
+ *   Do NOT write raw CSS in `style`. The allowed values are exported as `styles` and typed in giant.d.ts.
+ *   Use the `style` attribute only for values computed at runtime (e.g. a width percentage).
  *
  * ## COMPONENT EXAMPLE
  * export const MyComponent = component.MyComponent(async (props, ...children) => {
@@ -13,13 +16,14 @@
  * const count = signal.count(0); // Reactive state
  * const onclick = (e) => count.value++;
  *   // RETURN PATTERNS:
- *   // 1. Standard: `return div({ class: 'wrapper' }, ...children);`
+ *   // 1. Standard: `return div({ 'style-pad': 'medium' }, ...children);`
  *   // 2. Host Props: Return an array to bind props/events directly to the `<ui-mycomponent>` host element.
  *   return [
- *   { ...hostProps, onclick, 'data-active': count.value > 0 },
+ *     { onready, ondestroyed },
+ *     { ...hostProps, onclick, 'style-layout': 'stack', 'style-gap': 'small' },
  *     div(
- *     button({ disabled, class: design.typography.weightBold }, `Count: ${count.value}`)
- *   )
+ *       button({ disabled, 'style-emphasis': 'solid', 'style-weight': 'bold' }, `Count: ${count.value}`)
+ *     )
  *   ];
  * });
  */
@@ -63,10 +67,46 @@ const delegatedEvents = new Set();
 const svgTags = new Set(['svg', 'path', 'polyline', 'rect', 'circle', 'g', 'line', 'polygon', 'use', 'text']);
 const isSvgTag = t => svgTags.has(t);
 const safeAttr = /^[a-zA-Z_:-][\w:.-]*$/;
-const dangerousCss = /javascript:|expression\(|url\(|@import|-moz-binding|\\0/i;
 const urlAttrs = /^(href|src|xlink:href|formaction|action|poster|data)$/i;
 const dangerousUrl = /^\s*javascript:/i;
 const parseClass = (c) => Array.isArray(c) ? c.flat(Infinity).filter(Boolean).join(' ') : c;
+
+// Allowed style-* values, generated from giant.css by giant.compiler.js.
+const styles = __GIANT_STYLES_INJECT__;
+const warnedStyles = new Set();
+const checkStyleAttr = (k, v) => {
+  if (v == null || v === false || !k.startsWith('style-')) return;
+  const allowed = styles[k.slice(6)];
+  if (allowed?.includes(v)) return;
+  const id = `${k}=${v}`;
+  if (warnedStyles.has(id)) return;
+  warnedStyles.add(id);
+  console.warn(allowed
+    ? `[giant] Unknown value ${k}="${v}". Allowed: ${allowed.join(', ')}`
+    : `[giant] Unknown style attribute "${k}". Known: ${Object.keys(styles).map(n => 'style-' + n).join(', ')}`);
+};
+
+function isDangerousCss(css) {
+  // Strip CSS comments first.
+  const s = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // Decode CSS escapes enough to prevent things like:
+  // j\61vascript:
+  const decoded = s.replace(
+    /\\([0-9a-f]{1,6})(?:\s)?|\\(.)/gi,
+    (_, hex, escaped) =>
+      hex ? String.fromCodePoint(parseInt(hex, 16)) : escaped
+  );
+
+  const normalized = decoded.toLowerCase();
+
+  return (
+    /\bexpression\s*\(/i.test(normalized) ||
+    /@import\b/i.test(normalized) ||
+    /-moz-binding\b/i.test(normalized) ||
+    /\b(?:javascript|vbscript)\s*:/i.test(normalized)
+  );
+}
 
 let currentRenderingElement = null;
 const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
@@ -90,11 +130,11 @@ const createVNode = (_type, attributes = {}, children = [], node = null) => ({
         if (!safeAttr.test(k) || kLower === 'srcdoc' || kLower.startsWith('on') || (urlAttrs.test(k) && dangerousUrl.test(String(v)))) return '';
 
         if (k === 'style') {
-          if (typeof v === 'string' && dangerousCss.test(v)) return '';
+          if (typeof v === 'string' && isDangerousCss(v)) return '';
           if (typeof v === 'object') {
             const styleStr = Object.entries(v)
-              .filter(([sk, sv]) => /^[a-zA-Z0-9-]+$/.test(sk) && !dangerousCss.test(String(sv)))
-              .map(([sk, sv]) => `${sk}:${escapeHTML(sv)}`).join(';');
+              .filter(([sk, sv]) => /^[a-zA-Z0-9-]+$/.test(sk) && !isDangerousCss(String(sv)))
+              .map(([sk, sv]) => `${sk.startsWith('--') ? sk : sk.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}:${escapeHTML(sv)}`).join(';');
             return styleStr ? `style="${styleStr}"` : '';
           }
         }
@@ -123,10 +163,10 @@ const createElement = (t, ...args) => {
 
   const processArgs = (arr) => {
     arr.forEach(c => {
-      if (c == null || c === '') return;
+      if (c == null || c === '' || typeof c === 'boolean') return;
 
       const type = typeof c;
-      if (type === 'string' || type === 'number' || type === 'boolean') {
+      if (type === 'string' || type === 'number') {
         children.push(createVNode('#text', { text: String(c) }));
       } else if (Array.isArray(c)) {
         processArgs(c);
@@ -140,10 +180,17 @@ const createElement = (t, ...args) => {
           if (c.id) domAttrs.id = c.id;
         }
         children.push(createVNode('#dom', domAttrs, [], c));
-      } else if (type === 'function' && c.name?.startsWith('on')) {
-        attributes[c.name] = c;
+      } else if (type === 'function') {
+        if (c.name?.startsWith('on')) {
+          attributes[c.name] = c;
+        } else {
+          processArgs([c()]);
+        }
       } else if (type === 'object') {
-        for (const k in c) attributes[k] = k === 'class' ? parseClass(c[k]) : c[k];
+        for (const k in c) {
+          checkStyleAttr(k, c[k]);
+          attributes[k] = k === 'class' ? parseClass(c[k]) : c[k];
+        }
       }
     });
   };
@@ -250,12 +297,15 @@ const patch = (el, vnode) => {
 
       if (!delegatedEvents.has(eventName)) {
         delegatedEvents.add(eventName);
-        const useCapture = ['focus', 'blur', 'scroll', 'load', 'error'].includes(eventName);
+        // enter/leave don't bubble and fire separately on every element entered, so only the target handles them
+        const targetOnly = /^(pointer|mouse)(enter|leave)$/.test(eventName);
+        const useCapture = targetOnly || ['focus', 'blur', 'scroll', 'load', 'error'].includes(eventName);
 
         document.addEventListener(eventName, (e) => {
           let node = e.target;
           while (node && node !== document) {
-            if (node._handlers && node._handlers[eventName]) {
+            // disabled controls never run handlers (synthetic events would otherwise reach the delegate)
+            if (node._handlers && node._handlers[eventName] && !node.disabled) {
 
               let compRoot = node;
               while (compRoot && !compRoot.state && compRoot !== document) {
@@ -267,6 +317,7 @@ const patch = (el, vnode) => {
 
               if (e.cancelBubble) break;
             }
+            if (targetOnly) break;
             node = node.parentNode;
           }
         }, useCapture);
@@ -291,7 +342,7 @@ const patch = (el, vnode) => {
         }
       }
       for (const sk in v) {
-        if (dangerousCss.test(String(v[sk]))) continue;
+        if (isDangerousCss(String(v[sk]))) continue;
 
         if (sk.startsWith('--')) {
           if (el.style.getPropertyValue(sk) !== String(v[sk])) {
@@ -306,7 +357,7 @@ const patch = (el, vnode) => {
       if (k.toLowerCase() === 'srcdoc') continue;
       if (k.toLowerCase().startsWith('on') && typeof v === 'string') continue;
       if (urlAttrs.test(k) && dangerousUrl.test(String(v))) continue;
-      if (k === 'style' && typeof v === 'string' && dangerousCss.test(v)) continue;
+      if (k === 'style' && typeof v === 'string' && isDangerousCss(v)) continue;
 
       if (v === false || v == null) {
         if (el.hasAttribute(k)) el.removeAttribute(k);
@@ -517,7 +568,10 @@ function coreComponent(Fn, tagName = '') {
 
               // Extract host props
               if (item && typeof item === 'object' && !item._type && !item.nodeType && !Array.isArray(item)) {
-                for (const k in item) hostAttrs[k] = k === 'class' ? parseClass(item[k]) : item[k];
+                for (const k in item) {
+                  checkStyleAttr(k, item[k]);
+                  hostAttrs[k] = k === 'class' ? parseClass(item[k]) : item[k];
+                }
                 continue;
               }
               renderableChildren.push(normalizeSSR(item));
@@ -533,8 +587,34 @@ function coreComponent(Fn, tagName = '') {
       }
 
       const safeId = (globalThis.CSS && CSS.escape) ? CSS.escape(explicitId) : explicitId;
-      let el = explicitId ? document.querySelector(`${Fn.tagName}#${safeId}`) : null;
+
+      // 👉 Positional Caching: Track component call order to preserve identity
+      const parent = currentRenderingElement;
+      let el = null;
+
+      // 1. Try explicit ID match
+      if (explicitId) {
+        el = document.querySelector(`${Fn.tagName}#${safeId}`);
+      }
+
+      // 2. Try positional reuse (prevents unkeyed components from being destroyed)
+      if (!el && parent) {
+        parent._childComponents ??= [];
+        const existing = parent._childComponents[parent._childIdx];
+        if (existing && existing.tagName.toLowerCase() === Fn.tagName.toLowerCase()) {
+          el = existing;
+        }
+      }
+
+      // 3. Fallback to fresh creation
       if (!el) el = document.createElement(Fn.tagName);
+
+      // 4. Register child position to parent
+      if (parent) {
+        parent._childComponents ??= [];
+        parent._childComponents[parent._childIdx] = el;
+        parent._childIdx++;
+      }
 
       el.id = el.id || explicitId || '';
       if (explicitKey != null) el._key = explicitKey;
@@ -569,10 +649,18 @@ function coreComponent(Fn, tagName = '') {
         el._renderController = new AbortController();
         el.signal = el._renderController.signal;
 
+        // 👉 Reset the child index before executing the render function
+        el._childIdx = 0;
+
         const previousElement = currentRenderingElement;
         currentRenderingElement = el;
         const innerVNode = safeRender(el, newArgs);
         currentRenderingElement = previousElement;
+
+        // 👉 Truncate orphaned children to prevent memory leaks if the tree shrinks
+        if (el._childComponents) el._childComponents.length = el._childIdx;
+
+        const hostAttrs = {};
 
         const normalizeVNode = (val) => {
           if (val == null || typeof val === 'boolean') return createVNode('#text', { text: '' });
@@ -583,7 +671,29 @@ function coreComponent(Fn, tagName = '') {
               const item = val[i];
               if (typeof item === 'function' && item.name) { el[item.name] = item; continue; }
               if (item && typeof item === 'object' && !item._type && !item.nodeType && !Array.isArray(item)) {
-                for (const k in item) k === 'class' ? el.setAttribute('class', parseClass(item[k])) : (el[k] = item[k]);
+                el._hostHandlers ??= {};
+
+                for (const k in item) {
+                  const v = item[k];
+
+                  if (typeof v === 'function' && k.startsWith('on')) {
+                    const eventName = k.slice(2).toLowerCase();
+                    const prev = el._hostHandlers[eventName];
+                    if (prev?.raw !== v) {
+                      if (prev) el.removeEventListener(eventName, prev.wrapped);
+                      const wrapped = (e) => v.call(el, e, e.target === el);
+                      el._hostHandlers[eventName] = { raw: v, wrapped };
+                      el.addEventListener(eventName, wrapped);
+                    }
+                  } else if (k === 'class' || k === 'style' || v == null || (typeof v !== 'object' && typeof v !== 'function')) {
+                    // attributes, class and style go through patch() so they are diffed and survive hydration
+                    checkStyleAttr(k, v);
+                    hostAttrs[k] = v;
+                  } else {
+                    el[k] = v;
+                  }
+                }
+
                 continue;
               }
               renderableChildren.push(normalizeVNode(item));
@@ -596,7 +706,7 @@ function coreComponent(Fn, tagName = '') {
 
         const applyPatch = (node) => {
           if (seq !== el._renderSeq) return; // Prevent race conditions
-          el = patch(el, createVNode(Fn.tagName, { id: el.id || explicitId || id }, [node]));
+          el = patch(el, createVNode(Fn.tagName, { ...hostAttrs, id: el.id || explicitId || id }, [node]));
           if (seq > 1) queueMicrotask(() => el.dispatchEvent(new CustomEvent('updated', { bubbles: true, detail: { element: el } })));
         };
 
@@ -737,6 +847,8 @@ function createRoot(Fn) {
         mut.removedNodes && processNodes(mut.removedNodes, 'destroyed')
         mut.addedNodes && processNodes(mut.addedNodes, 'ready')
       })).observe(root.parentNode || document.body, { childList: true, subtree: true })
+
+      processNodes([root], 'ready')
     }
 
     document.readyState === 'loading'
@@ -772,6 +884,5 @@ const signal = new Proxy({}, {
   }
 });
 
-const design = __GIANT_DESIGN_INJECT__;
 
-export { createRoot, createElement, design, component, html, signal, match };
+export { createRoot, createElement, styles, component, html, signal, match };

@@ -21,6 +21,10 @@ import { testSwitch } from './switch/switch.test.js';
 import { testText } from './text/text.test.js';
 import { testTextarea } from './textarea/textarea.test.js';
 import { testTooltip } from './tooltip/tooltip.test.js';
+import { testToast } from './toast/toast.test.js';
+import { testTree } from './tree/tree.test.js';
+import { testSplit } from './split/split.test.js';
+import { testCreditCardInput } from './creditcardinput/creditcardinput.test.js';
 
 const testSuites = [
   { name: 'Accordion', run: testAccordion },
@@ -45,7 +49,11 @@ const testSuites = [
   { name: 'Tabs', run: testTabs },
   { name: 'Text', run: testText },
   { name: 'Textarea', run: testTextarea },
-  { name: 'Tooltip', run: testTooltip }
+  { name: 'Tooltip', run: testTooltip },
+  { name: 'Toast', run: testToast },
+  { name: 'Tree', run: testTree },
+  { name: 'SplitLayout', run: testSplit },
+  { name: 'CreditCardInput', run: testCreditCardInput }
 ];
 
 const resultsDiv = document.getElementById('results');

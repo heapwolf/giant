@@ -1,505 +1,456 @@
 /**
- * @fileoverview Composable SVG Charting Library for GIANT.JS
- * * Provides a highly composable, zero-dependency SVG charting engine.
- * Charts are constructed using decoupled configuration primitives that
- * define data bindings, while the rendering engines handle the complex SVG math,
- * interactivity, and accessibility.
+ * @fileoverview Composable, zero-dependency SVG charts for GIANT.JS.
+ * Chart engines (ChartBars, ChartLine, ...) take configuration primitives (Bar, XAxis, ...) as children.
  */
 
-import { component, html, design, signal } from '../../../giant.js';
+import { component, html, signal } from '../../../giant.js';
 
 const { div, span, svg, rect, text, line, path, polyline, circle, polygon } = html;
 
-/**
- * @typedef {Object} ChartPrimitive
- * @property {string} _chartPrimitive - Internal identifier for the rendering engine.
- */
+// --- Configuration primitives (the in-body docs feed the API reference) ---
 
 export const CartesianGrid = (props = {}) => {
   /**
-   * Configuration for a Cartesian Grid (used in Bar and Line charts).
-   * @param {Object} props
-   * @param {boolean} [props.vertical=true] - Whether to show vertical grid lines.
-   * @param {boolean} [props.horizontal=true] - Whether to show horizontal grid lines.
+   * Grid lines for Bar and Line charts.
+   * @param {boolean} [props.vertical=true] - Whether to show the grid lines.
    * @param {string} [props.strokeDasharray='4 4'] - SVG stroke-dasharray pattern.
-   * @returns {ChartPrimitive}
    */
-  return ({ _chartPrimitive: 'grid', ...props });
-}
+  return { _chartPrimitive: 'grid', ...props };
+};
 
 export const XAxis = (props = {}) => {
   /**
-   * Configuration for an X-Axis.
-   * @param {Object} props
-   * @param {string} props.dataKey - The key in the data object to use for labels.
-   * @param {Function} [props.tickFormatter] - A function to format the tick labels.
-   * @returns {ChartPrimitive}
+   * X-axis labels.
+   * @param {string} props.dataKey - The data key used for labels.
+   * @param {Function} [props.tickFormatter] - Formats each tick label.
    */
-  return { _chartPrimitive: 'xaxis', ...props }
-}
+  return { _chartPrimitive: 'xaxis', ...props };
+};
 
 export const Bar = (props = {}) => {
   /**
-   * Configuration for a Bar series.
-   * @param {Object} props
+   * A bar series.
    * @param {string} props.dataKey - The data key to render.
-   * @param {number} [props.radius=0] - Border radius for the top of the bars.
-   * @param {string} [props.fill] - CSS color or variable. Defaults to the config injector.
-   * @returns {ChartPrimitive}
+   * @param {number} [props.radius=0] - Corner radius of the bars.
+   * @param {string} [props.fill] - CSS colour. Defaults to the ChartContainer config colour.
    */
-  return { _chartPrimitive: 'bar', ...props }
-}
+  return { _chartPrimitive: 'bar', ...props };
+};
 
 export const Line = (props = {}) => {
   /**
-   * Configuration for a Line series.
-   * @param {Object} props
+   * A line series.
    * @param {string} props.dataKey - The data key to render.
-   * @param {number} [props.strokeWidth=2] - Thickness of the line.
-   * @param {string} [props.stroke] - CSS color or variable. Defaults to the config injector.
-   * @returns {ChartPrimitive}
+   * @param {number} [props.strokeWidth=2] - Line thickness.
+   * @param {string} [props.stroke] - CSS colour. Defaults to the ChartContainer config colour.
    */
-  return { _chartPrimitive: 'line', ...props }
-}
+  return { _chartPrimitive: 'line', ...props };
+};
 
 export const Pie = (props = {}) => {
   /**
-   * Configuration for a Pie/Donut series.
-   * @param {Object} props
-   * @param {string} props.dataKey - The numeric data key defining the slice size.
-   * @param {string} [props.nameKey='name'] - The data key defining the slice label.
-   * @param {number} [props.innerRadius=0] - Inner radius cutout (creates a donut chart if > 0).
-   * @returns {ChartPrimitive}
+   * A pie/donut series.
+   * @param {string} props.dataKey - The numeric data key defining slice size.
+   * @param {string} [props.nameKey='name'] - The data key defining slice label and colour key.
+   * @param {number} [props.innerRadius=0] - Inner cutout radius (a donut when > 0).
    */
-  return { _chartPrimitive: 'pie', ...props }
-}
+  return { _chartPrimitive: 'pie', ...props };
+};
 
 export const Radar = (props = {}) => {
   /**
-   * Configuration for a Radar series.
-   * @param {Object} props
-   * @param {string} props.dataKey - The data key to render on the radar.
-   * @param {number} [props.fillOpacity=0.4] - Opacity of the polygon fill (set to 0 for lines only).
-   * @param {boolean} [props.dot=false] - Whether to render data points at vertices.
-   * @param {string} [props.fill] - Fill color. Defaults to config injector.
-   * @param {string} [props.stroke] - Stroke color. Defaults to config injector.
-   * @returns {ChartPrimitive}
+   * A radar series.
+   * @param {string} props.dataKey - The data key to render.
+   * @param {number} [props.fillOpacity=0.4] - Polygon fill opacity (0 draws lines only).
+   * @param {boolean} [props.dot=false] - Whether to draw points at the vertices.
+   * @param {string} [props.fill] - Fill colour. Defaults to the ChartContainer config colour.
+   * @param {string} [props.stroke] - Stroke colour. Defaults to the fill.
    */
   return { _chartPrimitive: 'radar', ...props };
 };
 
 export const RadialBar = (props = {}) => {
   /**
-   * Configuration for a Radial Bar series.
-   * @param {Object} props
+   * A radial bar series.
    * @param {string} props.dataKey - The data key to render.
-   * @param {string} [props.nameKey='name'] - The data key defining the label.
+   * @param {string} [props.nameKey='name'] - The data key defining label and colour key.
    * @param {boolean} [props.background=true] - Whether to draw a background track.
    * @param {boolean} [props.label=false] - Whether to draw labels on the tracks.
-   * @returns {ChartPrimitive}
    */
-  return { _chartPrimitive: 'radialBar', ...props }
-}
+  return { _chartPrimitive: 'radialBar', ...props };
+};
 
 export const PolarGrid = (props = {}) => {
   /**
-   * Configuration for a Radar Chart's background grid.
-   * @param {Object} props
+   * Background grid for Radar and Radial charts.
    * @param {'polygon'|'circle'} [props.gridType='polygon'] - Shape of the grid rings.
-   * @param {boolean} [props.radialLines=true] - Whether to draw spoke lines from center.
-   * @param {boolean} [props.filled=false] - Whether to alternate fill colors on grid rings.
-   * @param {number} [props.gridLines=4] - Number of concentric grid rings.
-   * @param {string} [props.stroke] - Custom stroke color for the grid lines (e.g., 'var(--color-border-strong)').
-   * @returns {ChartPrimitive}
+   * @param {boolean} [props.radialLines=true] - Whether to draw spokes from the centre.
+   * @param {boolean} [props.filled=false] - Whether to fill alternate rings.
+   * @param {number} [props.gridLines=4] - Number of rings (radar) or spokes (radial, default 12).
+   * @param {string} [props.stroke] - Grid line colour, e.g. 'var(--fg)'.
    */
   return { _chartPrimitive: 'polarGrid', ...props };
-}
+};
 
 export const PolarAngleAxis = (props = {}) => {
   /**
-   * Configuration for a Radar Chart's perimeter labels.
-   * @param {Object} props
-   * @param {string} props.dataKey - The data key to map to the perimeter axes.
-   * @param {Function} [props.tickFormatter] - A function to format the tick labels.
-   * @returns {ChartPrimitive}
+   * Perimeter labels for Radar charts.
+   * @param {string} props.dataKey - The data key mapped to the perimeter.
+   * @param {Function} [props.tickFormatter] - Formats each label.
    */
-  return { _chartPrimitive: 'polarAngleAxis', ...props }
-}
+  return { _chartPrimitive: 'polarAngleAxis', ...props };
+};
 
 export const ChartTooltip = (props = {}) => {
   /**
-   * Configuration to enable hovering tooltips on a chart.
-   * @param {Object} props
-   * @param {boolean} [props.cursor=true] - Whether to show a background cursor highlight on hover.
-   * @returns {ChartPrimitive}
+   * Enables hover tooltips.
+   * @param {boolean} [props.cursor=true] - Whether to highlight the hovered position.
    */
-  return { _chartPrimitive: 'tooltip', ...props }
-}
+  return { _chartPrimitive: 'tooltip', ...props };
+};
 
 export const ChartLegend = (props = {}) => {
   /**
-   * Configuration to display a series legend at the bottom of the chart.
-   * @param {Object} props
-   * @returns {ChartPrimitive}
+   * Shows a series legend below the chart.
    */
-  return { _chartPrimitive: 'legend', ...props }
-}
+  return { _chartPrimitive: 'legend', ...props };
+};
 
 export const ChartContainer = component.ChartContainer((props = {}, ...children) => {
   /**
-   * Container component that injects JS configurations into standard CSS variables.
-   * Allows pure CSS styling, transitions, and theme syncing without JS overhead.
-   * * @param {Object} props
-   * @param {Object} props.config - Dictionary mapping keys to labels and colors.
-   * @param {...unknown} children - The Chart Engine and configurations.
+   * Exposes each config colour as a CSS variable (--color-<key>) for the charts inside.
+   * Keys are lower-cased and anything outside [a-z0-9-] becomes '-', so 'Page Views' is --color-page-views.
+   * @param {Object} props.config - Maps series keys to { label, color }.
    */
-  const { config = {}, class: className = '', style = {}, ...rest } = props;
-
-  // Inject the configuration colors directly into the style object
-  const cssVars = { ...style };
-  Object.entries(config).forEach(([key, val]) => {
-    if (val.color) cssVars[`--color-${key}`] = val.color;
-  });
-
-  return div(
-    { ...rest, class: [design.size.wFull, className], style: cssVars },
-    ...children
-  );
+  const { config = {}, style = {}, ...rest } = props;
+  const vars = { ...style };
+  for (const [key, val] of Object.entries(config)) if (val.color) vars[colorVar(key)] = val.color;
+  return div({ 'style-width': 'full', ...rest, style: vars }, ...children);
 });
 
+// --- Shared helpers ---
 
-const renderLegend = (seriesConfigs, configProp) => {
-  if (!seriesConfigs || seriesConfigs.length === 0) return null;
-  return div(
-    { class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.spacing.gap6], style: { marginTop: '1rem' } },
-    ...seriesConfigs.map(s => {
-      const label = configProp?.[s.dataKey]?.label || s.dataKey;
-      const color = s.fill || s.stroke || `var(--color-${s.dataKey})`;
-      return div(
-        { class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2, design.typography.size1, design.fg.fg] },
-        div({ style: { width: '12px', height: '12px', borderRadius: '2px', backgroundColor: color } }),
-        label
-      );
-    })
-  );
+// SVG paints from the giant.tokens variables
+const INK = 'var(--fg)';
+const INK_MUTED = 'color-mix(in oklch, var(--fg) 55%, var(--bg))';
+const INK_SUBTLE = 'color-mix(in oklch, var(--fg) 30%, var(--bg))';
+const GRID = 'var(--border)';
+const TRACK = 'var(--muted)';
+const PAPER = 'var(--bg)';
+// cartesian plots stretch (preserveAspectRatio none); this keeps their strokes at their pixel width
+const CRISP = { 'vector-effect': 'non-scaling-stroke' };
+
+// The root stacks the plot and the legend; the plot anchors the tooltip and the HTML overlays.
+const ROOT = { 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-height': 'full' };
+const POLAR_ROOT = { ...ROOT, 'style-align': 'center' };
+const PLOT_AREA = { 'style-position': 'relative', 'style-flex': 'grow', 'style-width': 'full' };
+const PLOT = { 'style-width': 'full', 'style-height': 'full', 'style-overflow': 'visible' };
+const INERT = { 'style-interactive': 'inert' };
+const SLICE = { 'style-interactive': 'clickable', 'style-motion': 'all' };
+
+const TOOLTIP = {
+  'style-position': 'absolute', 'style-layer': 'overlay', 'style-interactive': 'inert',
+  'style-surface': 'overlay', 'style-border': 'thin', 'style-radius': 'medium',
+  'style-pad-block': 'small', 'style-pad-inline': 'medium',
+  'style-layout': 'stack', 'style-gap': 'xsmall', 'style-text': 'small', 'style-wrap': 'nowrap',
 };
+
+// x-axis labels are HTML so the stretched SVG doesn't distort the text
+const AXIS_LABEL = {
+  'style-position': 'absolute', 'style-interactive': 'inert', 'style-text': 'xsmall',
+  'style-weight': 'medium', 'style-tone': 'muted', 'style-wrap': 'nowrap',
+};
+
+const EMPTY = { 'style-position': 'absolute', 'style-inset': 'fill', 'style-layout': 'center', 'style-interactive': 'inert' };
+
+const parse = (configs) => {
+  const flat = configs.flat(Infinity).filter(Boolean);
+  const all = (type) => flat.filter(c => c._chartPrimitive === type);
+  return { all, one: (type) => all(type)[0] };
+};
+
+const colorVar = (key) => `--color-${String(key).toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+const num = (v) => Number(v) || 0;
+const seriesColor = (s) => s.fill || s.stroke || `var(${colorVar(s.dataKey)})`;
+const nameColor = (d, nameKey, config) => config?.[d[nameKey]]?.color || d.fill || `var(${colorVar(d[nameKey])})`;
+const tick = (axis, d) => axis.tickFormatter ? axis.tickFormatter(d[axis.dataKey]) : d[axis.dataKey];
+const maxOf = (data, series) => Math.max(1, ...data.map(d => Math.max(...series.map(s => num(d[s.dataKey])))));
+
+// 0 degrees is the top, clockwise
+const polar = (cx, cy, r, deg) => {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+};
+
+// A full circle as two half arcs (a single arc can't end where it starts); sweep 0 winds it the other way
+const ring = (cx, cy, r, from = 0, sweep = 1) => {
+  const [a, b] = [polar(cx, cy, r, from), polar(cx, cy, r, from + 180)];
+  return `M ${a.x} ${a.y} A ${r} ${r} 0 1 ${sweep} ${b.x} ${b.y} A ${r} ${r} 0 1 ${sweep} ${a.x} ${a.y}`;
+};
+
+// Index of the region ({ i, r0, r1, from, sweep }) under (x, y), for pie and radial hover
+const regionAt = (regions, cx, cy, x, y) => {
+  const r = Math.hypot(x - cx, y - cy);
+  const deg = Math.atan2(y - cy, x - cx) * 180 / Math.PI + 90;
+  return regions.find(g => r >= g.r0 && r <= g.r1 && (((deg - g.from) % 360) + 360) % 360 < g.sweep)?.i ?? null;
+};
+
+// Tracks the pointer over the plot: { x, y } in viewBox units, { left, top } as fractions of the plot box.
+// Handlers are delegated, so this uses pointerout (which bubbles) rather than pointerleave.
+const tracking = (pointer) => ({
+  'style-interactive': 'precise',
+  onpointermove: (e) => {
+    const node = e.target.closest('svg');
+    const { x, y } = new DOMPoint(e.clientX, e.clientY).matrixTransform(node.getScreenCTM().inverse());
+    const box = node.getBoundingClientRect();
+    pointer.value = { x, y, left: (e.clientX - box.left) / box.width, top: (e.clientY - box.top) / box.height };
+  },
+  onpointerout: (e) => {
+    if (!e.target.closest('svg').contains(e.relatedTarget)) pointer.value = null;
+  },
+});
+
+// The hovered index under the pointer, or null
+const hoverOf = (pointer, pick) => (pointer.value ? pick(pointer.value.x, pointer.value.y) : null);
+
+// Tooltip next to the pointer, flipped towards the centre so it stays inside the plot
+const nearPointer = ({ left, top }) => ({
+  left: `${left * 100}%`,
+  top: `${top * 100}%`,
+  transform: `translate(${left > 0.5 ? '-115%' : '15%'}, ${top > 0.5 ? '-115%' : '15%'})`,
+});
+
+// A colour key drawn in SVG, so the runtime colour is a paint attribute
+const swatch = (color, w = 8, h = 8, rx = 2) =>
+  svg({ width: w, height: h, viewBox: `0 0 ${w} ${h}`, 'aria-hidden': 'true' }, rect({ width: w, height: h, rx, fill: color }));
+
+// A dot that stays round in a stretched plot: a zero-length stroke with round caps
+const dot = (x, y, color) => [
+  path({ d: `M ${x} ${y} h 0`, stroke: color, 'stroke-width': 10, 'stroke-linecap': 'round', ...CRISP, ...INERT }),
+  path({ d: `M ${x} ${y} h 0`, stroke: PAPER, 'stroke-width': 5, 'stroke-linecap': 'round', ...CRISP, ...INERT }),
+];
+
+const tooltipRow = (key, label, value) => div(
+  { 'style-layout': 'row', 'style-justify': 'between', 'style-gap': 'medium' },
+  div({ 'style-layout': 'row', 'style-gap': 'small' }, key, span({ 'style-tone': 'muted' }, label)),
+  span({ 'style-weight': 'bold', 'style-font': 'mono' }, value)
+);
+
+// `position` is the runtime top/left/transform anchoring the tooltip
+const tooltipBox = (position, attrs, title, rows) =>
+  div({ ...TOOLTIP, ...attrs, style: position }, div({ 'style-weight': 'medium' }, title), ...rows);
+
+const seriesRows = (series, d, config, key = (s) => swatch(seriesColor(s))) =>
+  series.map(s => tooltipRow(key(s), config?.[s.dataKey]?.label || s.dataKey, d[s.dataKey]));
+
+const legendFor = (series, config) => series.length ? div(
+  { 'style-layout': 'row', 'style-justify': 'center', 'style-gap': 'xlarge' },
+  ...series.map(s => div(
+    { 'style-layout': 'row', 'style-gap': 'small', 'style-text': 'small' },
+    swatch(seriesColor(s), 12, 12),
+    config?.[s.dataKey]?.label || s.dataKey
+  ))
+) : null;
+
+// `overlays` are HTML layered over the plot: axis labels, an empty state, the tooltip
+const chart = (root, rest, svgAttrs, plot, overlays, legend) => div({ ...root, ...rest },
+  div(PLOT_AREA, svg({ ...PLOT, ...svgAttrs }, ...plot.flat(Infinity).filter(Boolean)), ...overlays),
+  legend
+);
+
+// Shared layout for bar and line charts; `side` is the left/right margin
+const cartesian = (configs, type, data, width, height, side) => {
+  const { one, all } = parse(configs);
+  const xAxis = one('xaxis');
+  const series = all(type);
+  const margin = { top: 20, right: side, bottom: xAxis ? 40 : 20, left: side };
+  const innerHeight = height - margin.top - margin.bottom;
+  const yRatio = innerHeight / maxOf(data, series);
+  const grid = one('grid');
+  const gridLines = grid && grid.vertical !== false
+    ? [0, 1, 2, 3, 4].map(i => {
+        const y = margin.top + (innerHeight / 4) * i;
+        return line({ x1: margin.left, x2: width - margin.right, y1: y, y2: y, stroke: GRID, 'stroke-dasharray': grid.strokeDasharray || '4 4', ...CRISP });
+      })
+    : [];
+  // the first, the last and about five between, each with a tick mark and an HTML label
+  const every = Math.max(1, Math.floor(data.length / 5));
+  const shown = xAxis ? data.flatMap((d, i) => (i === 0 || i === data.length - 1 || i % every === 0 ? [i] : [])) : [];
+  const axis = (xAt) => ({
+    ticks: shown.map(i => line({ x1: xAt(i), x2: xAt(i), y1: height - margin.bottom, y2: height - margin.bottom + 4, stroke: GRID, ...CRISP })),
+    // TODO(style): no attribute to centre a box on a point (translateX(-50%))
+    labels: shown.map(i => div({
+      ...AXIS_LABEL,
+      style: { left: `${(xAt(i) / width) * 100}%`, top: `${((height - margin.bottom + 14) / height) * 100}%`, transform: 'translateX(-50%)' }
+    }, tick(xAxis, data[i]))),
+  });
+  return {
+    xAxis, series, margin, innerWidth: width - margin.left - margin.right, innerHeight, gridLines, axis,
+    tooltip: one('tooltip'), legend: one('legend'),
+    yAt: (v) => height - margin.bottom - num(v) * yRatio,
+  };
+};
+
+// --- Chart engines ---
 
 export const ChartBars = component.ChartBars((props = {}, ...configs) => {
   /**
-   * ChartBars Component
-   *
-   * @component
-   * @description SVG bar chart rendering engine with grid, x-axis, tooltip, legend, and grouped bars.
-   *
-   * @prop {Array<Object>} [data=[]] - Chart data array.
+   * SVG bar chart with grid, x-axis, tooltip, legend and grouped bars.
+   * @prop {Array<Object>} [data=[]] - Chart data.
    * @prop {number} [width=500] - SVG viewBox width.
    * @prop {number} [height=250] - SVG viewBox height.
-   * @prop {Object} [config] - Series configuration for labels and colors.
-   * @prop {string} [class] - Additional classes.
+   * @prop {Object} [config] - Series labels.
    */
-  const hoverIndex = signal.hoverIndex(null);
-  const { data = [], width = 500, height = 250, class: customClass = '', ...rest } = props;
-
-  const flatConfigs = configs.flat(Infinity).filter(Boolean);
-  const grid = flatConfigs.find(c => c._chartPrimitive === 'grid');
-  const xAxis = flatConfigs.find(c => c._chartPrimitive === 'xaxis');
-  const tooltip = flatConfigs.find(c => c._chartPrimitive === 'tooltip');
-  const legend = flatConfigs.find(c => c._chartPrimitive === 'legend');
-  const bars = flatConfigs.filter(c => c._chartPrimitive === 'bar');
-
-  const margin = { top: 20, right: 20, bottom: xAxis ? 40 : 20, left: 20 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-
-  const maxVal = Math.max(1, ...data.map(d => Math.max(...bars.map(b => d[b.dataKey] || 0))));
-  const yRatio = innerHeight / maxVal;
-  const xStep = innerWidth / data.length;
-
-  const handleMove = (e) => {
-    const svgNode = e.target.closest('svg');
-    if (!svgNode) return;
-    const rect = svgNode.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (width / rect.width);
-    const index = Math.floor((x - margin.left) / xStep);
-    hoverIndex.value = (index >= 0 && index < data.length) ? index : null;
-  };
-  const handleLeave = () => { hoverIndex.value = null; };
-
-  const svgChildren = [];
-
-  if (grid && grid.vertical !== false) {
-    for (let i = 0; i <= 4; i++) {
-      const y = margin.top + (innerHeight / 4) * i;
-      svgChildren.push(line({ x1: margin.left, x2: width - margin.right, y1: y, y2: y, stroke: 'var(--color-border-muted)', strokeDasharray: grid.strokeDasharray || '4 4' }));
-    }
-  }
-
-  if (xAxis) {
-    data.forEach((d, i) => {
-      const x = margin.left + (i * xStep) + (xStep / 2);
-      const val = xAxis.tickFormatter ? xAxis.tickFormatter(d[xAxis.dataKey]) : d[xAxis.dataKey];
-      svgChildren.push(text({ x, y: height - 10, fill: 'var(--color-fg-muted)', fontSize: 12, textAnchor: 'middle', style: { pointerEvents: 'none' } }, val));
-    });
-  }
-
-  const groupWidth = xStep * 0.8;
-  const barWidth = groupWidth / bars.length;
-
-  data.forEach((d, i) => {
-    const groupX = margin.left + (i * xStep) + (xStep * 0.1);
-
-    if (hoverIndex.value === i && tooltip && tooltip.cursor !== false) {
-      svgChildren.push(rect({ x: margin.left + (i * xStep), y: margin.top, width: xStep, height: innerHeight, fill: 'var(--color-surface-muted)', rx: 4 }));
-    }
-
-    bars.forEach((bar, j) => {
-      const h = (d[bar.dataKey] || 0) * yRatio;
-      svgChildren.push(rect({
-        x: groupX + (j * barWidth), y: height - margin.bottom - h, width: barWidth - 2, height: h,
-        fill: bar.fill || `var(--color-${bar.dataKey})`, rx: bar.radius || 0
-      }));
-    });
+  const pointer = signal.pointer(null);
+  const { data = [], width = 500, height = 250, config, ...rest } = props;
+  const c = cartesian(configs, 'bar', data, width, height, 20);
+  const xStep = c.innerWidth / Math.max(1, data.length);
+  const barWidth = (xStep * 0.8) / c.series.length;
+  const centre = (i) => c.margin.left + i * xStep + xStep / 2;
+  const h = hoverOf(pointer, (x) => {
+    const i = Math.floor((x - c.margin.left) / xStep);
+    return i >= 0 && i < data.length ? i : null;
   });
+  const { ticks, labels } = c.axis(centre);
 
-  return div(
-    { class: [design.layout.relative, customClass], style: { width: '100%', height: '100%' }, ...rest },
-    svg({ viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', style: { width: '100%', height: '100%', overflow: 'visible', cursor: 'crosshair' }, onpointermove: handleMove, onpointerleave: handleLeave }, ...svgChildren),
+  const bars = data.flatMap((d, i) => [
+    h === i && c.tooltip && c.tooltip.cursor !== false
+      ? rect({ x: c.margin.left + i * xStep, y: c.margin.top, width: xStep, height: c.innerHeight, fill: TRACK, rx: 4 })
+      : null,
+    ...c.series.map((bar, j) => {
+      const y = c.yAt(d[bar.dataKey]);
+      return rect({
+        x: c.margin.left + i * xStep + xStep * 0.1 + j * barWidth, y, width: barWidth - 2, height: height - c.margin.bottom - y,
+        fill: seriesColor(bar), rx: bar.radius || 0
+      });
+    })
+  ]);
 
-    (tooltip && hoverIndex.value !== null && data[hoverIndex.value]) ? div(
-      {
-        class: [design.layout.absolute, design.bg.bgSurface, design.shape.border1, design.border.borderMuted, design.shape.radius2, design.effect.shadow2],
-        style: { pointerEvents: 'none', top: '10%', left: `${Math.min(90, Math.max(10, (margin.left + (hoverIndex.value * xStep) + (xStep / 2)) / width * 100))}%`, transform: 'translateX(-50%)', padding: '0.75rem', zIndex: 50, minWidth: '120px' }
-      },
-      div({ class: [design.typography.weightMedium, design.typography.size1, design.layout.margin0, design.spacing.pb2] }, data[hoverIndex.value][xAxis?.dataKey]),
-      ...bars.map(b => div(
-        { class: [design.layout.flex, design.layout.justifyBetween, design.layout.itemsCenter, design.spacing.gap4, design.typography.size1] },
-        div({ class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2] }, div({ style: { width: '8px', height: '8px', backgroundColor: b.fill || `var(--color-${b.dataKey})`, borderRadius: '2px' } }), span({ class: design.fg.fgMuted }, props.config?.[b.dataKey]?.label || b.dataKey)),
-        span({ class: [design.typography.weightBold, design.typography.fontMono] }, data[hoverIndex.value][b.dataKey])
-      ))
-    ) : null,
-
-    legend ? renderLegend(bars, props.config) : null
+  return chart(ROOT, rest,
+    { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', ...tracking(pointer) },
+    [c.gridLines, ticks, bars],
+    [
+      ...labels,
+      c.tooltip && h !== null
+        ? tooltipBox(nearPointer(pointer.value), {}, data[h][c.xAxis?.dataKey], seriesRows(c.series, data[h], config))
+        : null
+    ],
+    c.legend ? legendFor(c.series, config) : null
   );
 });
-
 
 export const ChartLine = component.ChartLine((props = {}, ...configs) => {
- /**
-   * ChartLine Component
-   *
-   * @component
-   * @description SVG line chart rendering engine with grid, x-axis, hover cursor, tooltip, and legend.
-   *
-   * @prop {Array<Object>} [data=[]] - Chart data array.
+  /**
+   * SVG line chart with grid, x-axis, hover cursor, tooltip and legend.
+   * @prop {Array<Object>} [data=[]] - Chart data.
    * @prop {number} [width=500] - SVG viewBox width.
    * @prop {number} [height=250] - SVG viewBox height.
-   * @prop {Object} [config] - Series configuration for labels and colors.
-   * @prop {string} [class] - Additional classes.
+   * @prop {Object} [config] - Series labels.
+   * @prop {number} [minPoints=2] - Below this many points only the grid and `empty` are drawn.
+   * @prop {*} [empty] - Content shown centred over the plot while there is too little data.
    */
-  const hoverIndex = signal.hoverIndex(null);
-  const { data = [], width = 500, height = 250, class: customClass = '', ...rest } = props;
+  const pointer = signal.pointer(null);
+  const { data = [], width = 500, height = 250, config, minPoints = 2, empty, ...rest } = props;
+  const c = cartesian(configs, 'line', data, width, height, 40);
+  const ready = data.length >= minPoints && c.series.length > 0;
+  const xStep = c.innerWidth / Math.max(1, data.length - 1);
+  const xAt = (i) => c.margin.left + i * xStep;
+  const h = ready ? hoverOf(pointer, (x) => Math.max(0, Math.min(data.length - 1, Math.round((x - c.margin.left) / xStep)))) : null;
+  const { ticks, labels } = ready ? c.axis(xAt) : { ticks: [], labels: [] };
 
-  const flatConfigs = configs.flat(Infinity).filter(Boolean);
-  const grid = flatConfigs.find(c => c._chartPrimitive === 'grid');
-  const xAxis = flatConfigs.find(c => c._chartPrimitive === 'xaxis');
-  const tooltip = flatConfigs.find(c => c._chartPrimitive === 'tooltip');
-  const legend = flatConfigs.find(c => c._chartPrimitive === 'legend');
-  const lines = flatConfigs.filter(c => c._chartPrimitive === 'line');
+  const plot = ready ? [
+    ticks,
+    c.series.map(s => polyline({
+      points: data.map((d, i) => `${xAt(i)},${c.yAt(d[s.dataKey])}`).join(' '),
+      fill: 'none', stroke: seriesColor(s), 'stroke-width': s.strokeWidth || 2,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', ...CRISP, ...INERT
+    })),
+    h !== null && c.tooltip && c.tooltip.cursor !== false
+      ? line({ x1: xAt(h), x2: xAt(h), y1: c.margin.top, y2: height - c.margin.bottom, stroke: INK_SUBTLE, 'stroke-width': 1, 'stroke-dasharray': '4 4', ...CRISP })
+      : null,
+    h !== null ? c.series.map(s => dot(xAt(h), c.yAt(data[h][s.dataKey]), seriesColor(s))) : []
+  ] : [];
 
-  const margin = { top: 20, right: 20, bottom: xAxis ? 40 : 20, left: 20 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-
-  const maxVal = Math.max(1, ...data.map(d => Math.max(...lines.map(l => d[l.dataKey] || 0))));
-  const yRatio = innerHeight / maxVal;
-  const xStep = innerWidth / Math.max(1, data.length - 1);
-
-  const handleMove = (e) => {
-    const svgNode = e.target.closest('svg');
-    if (!svgNode) return;
-    const rect = svgNode.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (width / rect.width);
-
-    let closestIdx = 0;
-    let minDiff = Infinity;
-    for (let i = 0; i < data.length; i++) {
-      const diff = Math.abs(x - (margin.left + i * xStep));
-      if (diff < minDiff) { minDiff = diff; closestIdx = i; }
-    }
-    hoverIndex.value = closestIdx;
-  };
-  const handleLeave = () => { hoverIndex.value = null; };
-
-  const svgChildren = [];
-
-  if (grid && grid.vertical !== false) {
-    for (let i = 0; i <= 4; i++) {
-      const y = margin.top + (innerHeight / 4) * i;
-      svgChildren.push(line({ x1: margin.left, x2: width - margin.right, y1: y, y2: y, stroke: 'var(--color-border-muted)', strokeDasharray: grid.strokeDasharray || '4 4' }));
-    }
-  }
-
-  if (xAxis) {
-    data.forEach((d, i) => {
-      const val = xAxis.tickFormatter ? xAxis.tickFormatter(d[xAxis.dataKey]) : d[xAxis.dataKey];
-      svgChildren.push(text({ x: margin.left + (i * xStep), y: height - 10, fill: 'var(--color-fg-muted)', fontSize: 12, textAnchor: 'middle', style: { pointerEvents: 'none' } }, val));
-    });
-  }
-
-  lines.forEach((lConfig) => {
-    const points = data.map((d, i) => {
-      const x = margin.left + (i * xStep);
-      const y = height - margin.bottom - ((d[lConfig.dataKey] || 0) * yRatio);
-      return `${x},${y}`;
-    }).join(' ');
-
-    svgChildren.push(polyline({
-      points, fill: 'none', stroke: lConfig.stroke || `var(--color-${lConfig.dataKey})`,
-      strokeWidth: lConfig.strokeWidth || 2, strokeLinecap: 'round', strokeLinejoin: 'round',
-      style: { pointerEvents: 'none' }
-    }));
-  });
-
-  if (hoverIndex.value !== null && hoverIndex.value !== undefined && data[hoverIndex.value]) {
-    const hoverX = margin.left + (hoverIndex.value * xStep);
-
-    if (tooltip && tooltip.cursor !== false) {
-      svgChildren.push(line({ x1: hoverX, x2: hoverX, y1: margin.top, y2: height - margin.bottom, stroke: 'var(--color-border)', strokeWidth: 1, strokeDasharray: '4 4' }));
-    }
-
-    lines.forEach((lConfig) => {
-      const y = height - margin.bottom - ((data[hoverIndex.value][lConfig.dataKey] || 0) * yRatio);
-      svgChildren.push(circle({ cx: hoverX, cy: y, r: 4, fill: 'var(--color-surface)', stroke: lConfig.stroke || `var(--color-${lConfig.dataKey})`, strokeWidth: 2 }));
-    });
-  }
-
-  return div(
-    { class: [design.layout.relative, customClass], style: { width: '100%', height: '100%' }, ...rest },
-    svg({ viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', style: { width: '100%', height: '100%', overflow: 'visible', cursor: 'crosshair' }, onpointermove: handleMove, onpointerleave: handleLeave }, ...svgChildren),
-
-    (tooltip && hoverIndex.value !== null && data[hoverIndex.value]) ? div(
-      {
-        class: [design.layout.absolute, design.bg.bgSurface, design.shape.border1, design.border.borderMuted, design.shape.radius2, design.effect.shadow2],
-        style: { pointerEvents: 'none', top: '10%', left: `${Math.min(90, Math.max(10, (margin.left + (hoverIndex.value * xStep)) / width * 100))}%`, transform: 'translateX(-50%)', padding: '0.75rem', zIndex: 50, minWidth: '120px' }
-      },
-      div({ class: [design.typography.weightMedium, design.typography.size1, design.layout.margin0, design.spacing.pb2] }, data[hoverIndex.value][xAxis?.dataKey]),
-      ...lines.map(l => div(
-        { class: [design.layout.flex, design.layout.justifyBetween, design.layout.itemsCenter, design.spacing.gap4, design.typography.size1] },
-        div({ class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2] }, div({ style: { width: '8px', height: '2px', backgroundColor: l.stroke || `var(--color-${l.dataKey})` } }), span({ class: design.fg.fgMuted }, props.config?.[l.dataKey]?.label || l.dataKey)),
-        span({ class: [design.typography.weightBold, design.typography.fontMono] }, data[hoverIndex.value][l.dataKey])
-      ))
-    ) : null,
-
-    legend ? renderLegend(lines, props.config) : null
+  return chart(ROOT, rest,
+    { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', ...(ready ? tracking(pointer) : {}) },
+    [c.gridLines, plot],
+    [
+      ...labels,
+      !ready && empty != null ? div(EMPTY, empty) : null,
+      c.tooltip && h !== null
+        ? tooltipBox(nearPointer(pointer.value), {}, data[h][c.xAxis?.dataKey], seriesRows(c.series, data[h], config, s => swatch(seriesColor(s), 8, 2, 0)))
+        : null
+    ],
+    c.legend && ready ? legendFor(c.series, config) : null
   );
 });
 
+// Pie and radial charts share a single-row tooltip and a legend keyed by nameKey
+const nameTooltip = (position, d, nameKey, dataKey, config) => tooltipBox(
+  position,
+  { 'style-text-align': 'center' },
+  config?.[d[nameKey]]?.label || d[nameKey],
+  [tooltipRow(swatch(nameColor(d, nameKey, config)), config?.[dataKey]?.label || dataKey, d[dataKey])]
+);
+const nameLegend = (data, nameKey, config) =>
+  legendFor(data.map(d => ({ dataKey: d[nameKey], fill: nameColor(d, nameKey, config) })), config);
 
 export const ChartPie = component.ChartPie((props = {}, ...configs) => {
- /**
-   * ChartPie Component
-   *
-   * @component
-   * @description SVG pie and donut chart rendering engine with hover interaction, tooltip, and legend.
-   *
-   * @prop {Array<Object>} [data=[]] - Chart data array.
+  /**
+   * SVG pie and donut chart with hover, tooltip and legend. With no data it draws an empty ring.
+   * @prop {Array<Object>} [data=[]] - Chart data.
    * @prop {number} [width=300] - SVG viewBox width.
    * @prop {number} [height=300] - SVG viewBox height.
-   * @prop {Object} [config] - Series configuration for labels and colors.
-   * @prop {string} [class] - Additional classes.
+   * @prop {Object} [config] - Labels and colours, keyed by series and by slice name.
    */
-  const hoverIndex = signal.hoverIndex(null);
-  const { data = [], width = 300, height = 300, class: customClass = '', ...rest } = props;
+  const pointer = signal.pointer(null);
+  const { data = [], width = 300, height = 300, config, ...rest } = props;
+  const { one } = parse(configs);
+  const pie = one('pie');
+  if (!pie) return div('Pie configuration missing');
 
-  const flatConfigs = configs.flat(Infinity).filter(Boolean);
-  const pieConfig = flatConfigs.find(c => c._chartPrimitive === 'pie');
-  const tooltip = flatConfigs.find(c => c._chartPrimitive === 'tooltip');
-  const legend = flatConfigs.find(c => c._chartPrimitive === 'legend');
-
-  if (!pieConfig) return div('Pie configuration missing');
-
-  const dataKey = pieConfig.dataKey;
-  const nameKey = pieConfig.nameKey || 'name';
+  const { dataKey, nameKey = 'name', innerRadius: ir = 0 } = pie;
   const cx = width / 2;
   const cy = height / 2;
-  const radius = Math.min(cx, cy) - 20;
-  const innerRadius = pieConfig.innerRadius || 0;
-  const total = data.reduce((sum, d) => sum + (d[dataKey] || 0), 0);
+  const r = Math.min(cx, cy) - 20;
+  const total = data.reduce((sum, d) => sum + num(d[dataKey]), 0);
 
-  const polarToCartesian = (cx, cy, r, angleInDegrees) => {
-    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-    return { x: cx + (r * Math.cos(angleInRadians)), y: cy + (r * Math.sin(angleInRadians)) };
+  const arc = (from, to) => {
+    // a lone slice is a full ring; the inner circle winds the other way to cut the hole
+    if (to - from >= 359.9) return ir > 0 ? `${ring(cx, cy, r)} ${ring(cx, cy, ir, 0, 0)}` : ring(cx, cy, r);
+    const large = to - from <= 180 ? 0 : 1;
+    const [s, e] = [polar(cx, cy, r, to), polar(cx, cy, r, from)];
+    if (ir <= 0) return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 0 ${e.x} ${e.y} L ${cx} ${cy} Z`;
+    const [is, ie] = [polar(cx, cy, ir, to), polar(cx, cy, ir, from)];
+    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 0 ${e.x} ${e.y} L ${ie.x} ${ie.y} A ${ir} ${ir} 0 ${large} 1 ${is.x} ${is.y} Z`;
   };
 
-  const createArc = (startAngle, endAngle, r, ir) => {
-    if (endAngle - startAngle >= 360) endAngle -= 0.001;
-    const start = polarToCartesian(cx, cy, r, endAngle);
-    const end = polarToCartesian(cx, cy, r, startAngle);
-    const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-
-    if (ir > 0) {
-      const innerStart = polarToCartesian(cx, cy, ir, endAngle);
-      const innerEnd = polarToCartesian(cx, cy, ir, startAngle);
-      return [
-        "M", start.x, start.y, "A", r, r, 0, largeArcFlag, 0, end.x, end.y,
-        "L", innerEnd.x, innerEnd.y, "A", ir, ir, 0, largeArcFlag, 1, innerStart.x, innerStart.y, "Z"
-      ].join(" ");
-    }
-    return ["M", start.x, start.y, "A", r, r, 0, largeArcFlag, 0, end.x, end.y, "L", cx, cy, "Z"].join(" ");
-  };
-
-  let currentAngle = 0;
-  const svgChildren = data.map((d, i) => {
-    const val = d[dataKey] || 0;
-    const sliceAngle = (val / total) * 360;
-    const startAngle = currentAngle;
-    const endAngle = currentAngle + sliceAngle;
-    currentAngle = endAngle;
-
-    const isHovered = hoverIndex.value === i;
-    const fillValue = d.fill || `var(--color-${d[nameKey]?.toLowerCase().replace(/\s+/g, '-')})`;
-    const pathData = createArc(startAngle, endAngle, radius, innerRadius);
-
-    return path({
-      d: pathData, fill: fillValue, stroke: 'var(--color-surface)', strokeWidth: 2,
-      style: { transition: 'opacity 0.2s, transform 0.2s', transformOrigin: `${cx}px ${cy}px`, transform: isHovered ? `scale(1.04)` : `scale(1)`, cursor: 'pointer', opacity: (hoverIndex.value !== null && !isHovered) ? 0.6 : 1 },
-      onpointerenter: () => { hoverIndex.value = i; },
-      onpointerleave: () => { hoverIndex.value = null; }
-    });
+  let angle = 0;
+  const regions = [];
+  data.forEach((d, i) => {
+    const sweep = (num(d[dataKey]) / (total || 1)) * 360;
+    if (sweep > 0) regions.push({ i, r0: ir, r1: r, from: angle, sweep });
+    angle += sweep;
   });
+  const h = hoverOf(pointer, (x, y) => regionAt(regions, cx, cy, x, y));
 
-  return div(
-    { class: [design.layout.relative, design.layout.flex, design.layout.itemsCenter, customClass], style: { flexDirection: 'column', width: '100%', height: '100%' }, ...rest },
-    svg({ viewBox: `0 0 ${width} ${height}`, style: { width: '100%', height: '100%', overflow: 'visible' } }, ...svgChildren),
+  const slices = total > 0
+    ? regions.map(({ i, from, sweep }) => path({
+        d: arc(from, from + sweep), fill: nameColor(data[i], nameKey, config), stroke: PAPER, 'stroke-width': 2, ...SLICE,
+        style: { transformOrigin: `${cx}px ${cy}px`, transform: `scale(${h === i ? 1.04 : 1})`, opacity: h !== null && h !== i ? 0.6 : 1 }
+      }))
+    : [path({ d: arc(0, 360), fill: TRACK, stroke: PAPER, 'stroke-width': 2 })];
 
-    (tooltip && hoverIndex.value !== null && data[hoverIndex.value]) ? div(
-      {
-        class: [design.layout.absolute, design.bg.bgSurface, design.shape.border1, design.border.borderMuted, design.shape.radius2, design.effect.shadow2],
-        style: { pointerEvents: 'none', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', padding: '0.75rem', zIndex: 50, minWidth: '130px', textAlign: 'center' }
-      },
-      div({ class: [design.typography.weightMedium, design.typography.size1, design.layout.margin0, design.spacing.pb2] }, data[hoverIndex.value][nameKey]),
-      div(
-        { class: [design.layout.flex, design.layout.justifyBetween, design.layout.itemsCenter, design.spacing.gap4, design.typography.size1] },
-        div({ class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2] },
-          div({ style: { width: '8px', height: '8px', borderRadius: '2px', backgroundColor: data[hoverIndex.value].fill || `var(--color-${data[hoverIndex.value][nameKey]?.toLowerCase().replace(/\s+/g, '-')})` } }),
-          span({ class: design.fg.fgMuted }, props.config?.[dataKey]?.label || dataKey)
-        ),
-        span({ class: [design.typography.weightBold, design.typography.fontMono] }, data[hoverIndex.value][dataKey])
-      )
-    ) : null,
-
-    legend ? renderLegend(data.map(d => ({ dataKey: d[nameKey], fill: d.fill || `var(--color-${d[nameKey]?.toLowerCase().replace(/\s+/g, '-')})` }))) : null
+  return chart(POLAR_ROOT, rest, { viewBox: `0 0 ${width} ${height}`, ...tracking(pointer) }, slices,
+    [one('tooltip') && h !== null ? nameTooltip(nearPointer(pointer.value), data[h], nameKey, dataKey, config) : null],
+    one('legend') && total > 0 ? nameLegend(data, nameKey, config) : null
   );
 });
 
 export const ChartRadial = component.ChartRadial((props = {}, ...configs) => {
   /**
-   * ChartRadial Component
-   *
-   * @component
-   * @description SVG radial bar chart engine supporting concentric tracks, stacked tracks, grids, and semi-circles.
-   *
-   * @prop {Array<Object>} [data=[]] - Chart data array.
+   * SVG radial bar chart: concentric or stacked tracks, optional grid, partial arcs.
+   * @prop {Array<Object>} [data=[]] - Chart data.
    * @prop {number} [width=300] - SVG viewBox width.
    * @prop {number} [height=300] - SVG viewBox height.
    * @prop {string|number} [innerRadius='30%'] - Inner radius.
@@ -508,401 +459,170 @@ export const ChartRadial = component.ChartRadial((props = {}, ...configs) => {
    * @prop {number} [endAngle=360] - End angle in degrees.
    * @prop {boolean} [stacked=false] - Whether bars stack on one track.
    * @prop {number} [max] - Explicit maximum value.
-   * @prop {Object} [config] - Series configuration for labels and colors.
-   * @prop {string} [class] - Additional classes.
+   * @prop {Object} [config] - Labels and colours, keyed by series and by bar name.
    */
-  const hoverIndex = signal.hoverIndex(null);
-  const { data = [], width = 300, height = 300, innerRadius = '30%', outerRadius = '90%', startAngle = 0, endAngle = 360, stacked = false, max, class: customClass = '', ...rest } = props;
+  const pointer = signal.pointer(null);
+  const { data = [], width = 300, height = 300, innerRadius = '30%', outerRadius = '90%', startAngle = 0, endAngle = 360, stacked = false, max, config, ...rest } = props;
+  const { one } = parse(configs);
+  const bar = one('radialBar');
+  if (!bar) return div('RadialBar configuration missing');
 
-  const flatConfigs = configs.flat(Infinity).filter(Boolean);
-  const radialBars = flatConfigs.filter(c => c._chartPrimitive === 'radialBar');
-  const polarGrid = flatConfigs.find(c => c._chartPrimitive === 'polarGrid');
-  const tooltip = flatConfigs.find(c => c._chartPrimitive === 'tooltip');
-  const legend = flatConfigs.find(c => c._chartPrimitive === 'legend');
-
-  if (!radialBars.length) return div('RadialBar configuration missing');
-  const rConfig = radialBars[0];
-  const dataKey = rConfig.dataKey;
-  const nameKey = rConfig.nameKey || 'name';
-
+  const { dataKey, nameKey = 'name' } = bar;
   const cx = width / 2;
   const cy = height / 2;
+  const radius = (v) => typeof v === 'string' && v.endsWith('%') ? Math.min(cx, cy) * parseFloat(v) / 100 : v;
+  const ir = radius(innerRadius);
+  const or = radius(outerRadius);
 
-  const getR = (val) => typeof val === 'string' && val.endsWith('%') ? (Math.min(cx, cy)) * parseFloat(val) / 100 : val;
-  const ir = getR(innerRadius);
-  const or = getR(outerRadius);
-
-  const polarToCartesian = (cx, cy, r, angleInDegrees) => {
-    // -90 so 0 degrees maps mathematically to Top
-    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-    return { x: cx + (r * Math.cos(angleInRadians)), y: cy + (r * Math.sin(angleInRadians)) };
+  const arc = (r, from, to) => {
+    if (to - from >= 359.9) return ring(cx, cy, r, from);
+    const [s, e] = [polar(cx, cy, r, from), polar(cx, cy, r, to)];
+    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${to - from <= 180 ? 0 : 1} 1 ${e.x} ${e.y}`;
   };
 
-  const describeArc = (x, y, radius, startA, endA) => {
-    let diff = endA - startA;
-    if (diff >= 359.9) {
-      const p1 = polarToCartesian(x, y, radius, startA);
-      const p2 = polarToCartesian(x, y, radius, startA + 180);
-      return [
-        "M", p1.x, p1.y,
-        "A", radius, radius, 0, 1, 1, p2.x, p2.y,
-        "A", radius, radius, 0, 1, 1, p1.x, p1.y
-      ].join(" ");
-    }
-    const start = polarToCartesian(x, y, radius, startA);
-    const end = polarToCartesian(x, y, radius, endA);
-    const largeArcFlag = diff <= 180 ? "0" : "1";
-    return [
-      "M", start.x, start.y,
-      "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y
-    ].join(" ");
-  };
+  const values = data.map(d => num(d[dataKey]));
+  const maxVal = max ?? (stacked ? values.reduce((a, b) => a + b, 0) : Math.max(...values));
+  const sweepOf = (v) => (v / Math.max(1, maxVal)) * (endAngle - startAngle);
+  const n = data.length;
+  const gap = n > 1 ? (or - ir) * 0.08 : 0;
+  const trackWidth = stacked ? or - ir : (or - ir - gap * (n - 1)) / Math.max(1, n);
+  const track = (r) => path({ d: arc(r, startAngle, endAngle), fill: 'none', stroke: TRACK, 'stroke-width': trackWidth, 'stroke-linecap': 'round' });
 
-  const maxVal = max !== undefined ? max : (stacked
-    ? data.reduce((sum, d) => sum + (d[dataKey] || 0), 0)
-    : Math.max(...data.map(d => d[dataKey] || 0)));
+  // one hoverable value arc per datum: radius r, from..from+sweep
+  let from = startAngle;
+  const regions = data.map((d, i) => {
+    const r = stacked ? ir + trackWidth / 2 : or - i * (trackWidth + gap) - trackWidth / 2; // index 0 is the outermost track
+    const region = { i, r, r0: r - trackWidth / 2, r1: r + trackWidth / 2, from: stacked ? from : startAngle, sweep: sweepOf(values[i]) };
+    if (stacked) from += region.sweep;
+    return region;
+  });
+  const h = hoverOf(pointer, (x, y) => regionAt(regions, cx, cy, x, y));
 
-  const totalAngle = endAngle - startAngle;
-  const dataLen = data.length;
-  const trackGap = dataLen > 1 ? (or - ir) * 0.08 : 0;
-  const availableWidth = or - ir;
-  const trackWidth = stacked ? availableWidth : (availableWidth - (trackGap * (dataLen - 1))) / Math.max(1, dataLen);
-
-  const svgChildren = [];
-
-  // Radial Background Grid
-  if (polarGrid && !stacked) {
-    const numLines = polarGrid.gridLines || 12;
-    const step = 360 / numLines;
+  const plot = [];
+  const grid = one('polarGrid');
+  if (grid && !stacked) {
+    const step = 360 / (grid.gridLines || 12);
     for (let a = 0; a < 360; a += step) {
-       const startPt = polarToCartesian(cx, cy, ir - trackWidth/2, a);
-       const endPt = polarToCartesian(cx, cy, or + trackWidth/2, a);
-       svgChildren.push(line({ x1: startPt.x, y1: startPt.y, x2: endPt.x, y2: endPt.y, stroke: 'var(--color-border-muted)', strokeWidth: 1 }));
+      const [s, e] = [polar(cx, cy, ir - trackWidth / 2, a), polar(cx, cy, or + trackWidth / 2, a)];
+      plot.push(line({ x1: s.x, y1: s.y, x2: e.x, y2: e.y, stroke: GRID, 'stroke-width': 1 }));
     }
   }
 
-  if (stacked) {
-    const r = ir + trackWidth / 2;
-    if (rConfig.background !== false) {
-      svgChildren.push(path({ d: describeArc(cx, cy, r, startAngle, endAngle), fill: 'none', stroke: 'var(--color-surface-muted)', strokeWidth: trackWidth, strokeLinecap: 'round' }));
+  if (bar.background !== false) plot.push(...(stacked ? regions.slice(0, 1) : regions).map(g => track(g.r)));
+  regions.forEach(({ i, r, from, sweep }) => {
+    if (sweep > 0) plot.push(path({
+      d: arc(r, from, from + sweep), fill: 'none', stroke: nameColor(data[i], nameKey, config), 'stroke-width': trackWidth,
+      'stroke-linecap': 'round', ...SLICE, style: { opacity: h !== null && h !== i ? 0.6 : 1 }
+    }));
+    if (bar.label && !stacked) {
+      const at = polar(cx, cy, r, startAngle);
+      plot.push(text({
+        x: at.x, y: at.y + trackWidth * 0.35, 'text-anchor': 'middle', fill: PAPER,
+        'font-size': Math.max(10, trackWidth * 0.45), 'font-weight': 600, ...INERT
+      }, data[i][nameKey]));
     }
+  });
 
-    let currentA = startAngle;
-    data.forEach((d, i) => {
-      const val = d[dataKey] || 0;
-      const sliceA = (val / Math.max(1, maxVal)) * totalAngle;
-      const endA = currentA + sliceA;
-      const isHovered = hoverIndex.value === i;
-
-      if (val > 0) {
-        svgChildren.push(path({
-          d: describeArc(cx, cy, r, currentA, endA),
-          fill: 'none', stroke: d.fill || `var(--color-${d[nameKey]?.toLowerCase().replace(/\s+/g, '-')})`,
-          strokeWidth: trackWidth, strokeLinecap: 'round',
-          style: { transition: 'opacity 0.2s', cursor: 'pointer', opacity: (hoverIndex.value !== null && !isHovered) ? 0.6 : 1 },
-          onpointerenter: () => { hoverIndex.value = i; },
-          onpointerleave: () => { hoverIndex.value = null; }
-        }));
-      }
-      currentA = endA;
-    });
-  } else {
-    data.forEach((d, i) => {
-      // Outermost track is index 0
-      const r = or - i * (trackWidth + trackGap) - trackWidth / 2;
-      const val = d[dataKey] || 0;
-      const sliceA = (val / Math.max(1, maxVal)) * totalAngle;
-      const isHovered = hoverIndex.value === i;
-
-      if (rConfig.background !== false) {
-        svgChildren.push(path({
-          d: describeArc(cx, cy, r, startAngle, endAngle),
-          fill: 'none', stroke: 'var(--color-surface-muted)', strokeWidth: trackWidth, strokeLinecap: 'round'
-        }));
-      }
-
-      if (val > 0) {
-        svgChildren.push(path({
-          d: describeArc(cx, cy, r, startAngle, startAngle + sliceA),
-          fill: 'none', stroke: d.fill || `var(--color-${d[nameKey]?.toLowerCase().replace(/\s+/g, '-')})`,
-          strokeWidth: trackWidth, strokeLinecap: 'round',
-          style: { transition: 'opacity 0.2s', cursor: 'pointer', opacity: (hoverIndex.value !== null && !isHovered) ? 0.6 : 1 },
-          onpointerenter: () => { hoverIndex.value = i; },
-          onpointerleave: () => { hoverIndex.value = null; }
-        }));
-      }
-
-      // Track Labels aligned at start
-      if (rConfig.label) {
-         const lblPt = polarToCartesian(cx, cy, r, startAngle);
-         svgChildren.push(text({
-           x: lblPt.x, y: lblPt.y + (trackWidth * 0.35),
-           textAnchor: 'middle', fill: 'var(--color-surface)', fontSize: Math.max(10, trackWidth * 0.45), fontWeight: 600, style: { pointerEvents: 'none' }
-         }, d[nameKey]));
-      }
-    });
-  }
-
-  return div(
-    { class: [design.layout.relative, design.layout.flex, design.layout.itemsCenter, customClass], style: { flexDirection: 'column', width: '100%', height: '100%' }, ...rest },
-    svg({ viewBox: `0 0 ${width} ${height}`, style: { width: '100%', height: '100%', overflow: 'visible' } }, ...svgChildren),
-
-    (tooltip && hoverIndex.value !== null && data[hoverIndex.value]) ? div(
-      {
-        class: [design.layout.absolute, design.bg.bgSurface, design.shape.border1, design.border.borderMuted, design.shape.radius2, design.effect.shadow2],
-        style: { pointerEvents: 'none', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', padding: '0.75rem', zIndex: 50, minWidth: '130px', textAlign: 'center' }
-      },
-      div({ class: [design.typography.weightMedium, design.typography.size1, design.layout.margin0, design.spacing.pb2] }, data[hoverIndex.value][nameKey]),
-      div(
-        { class: [design.layout.flex, design.layout.justifyBetween, design.layout.itemsCenter, design.spacing.gap4, design.typography.size1] },
-        div({ class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2] },
-          div({ style: { width: '8px', height: '8px', borderRadius: '2px', backgroundColor: data[hoverIndex.value].fill || `var(--color-${data[hoverIndex.value][nameKey]?.toLowerCase().replace(/\s+/g, '-')})` } }),
-          span({ class: design.fg.fgMuted }, props.config?.[dataKey]?.label || dataKey)
-        ),
-        span({ class: [design.typography.weightBold, design.typography.fontMono] }, data[hoverIndex.value][dataKey])
-      )
-    ) : null,
-
-    legend ? renderLegend(data.map(d => ({ dataKey: d[nameKey], fill: d.fill || `var(--color-${d[nameKey]?.toLowerCase().replace(/\s+/g, '-')})` }))) : null
+  return chart(POLAR_ROOT, rest, { viewBox: `0 0 ${width} ${height}`, ...tracking(pointer) }, plot,
+    [one('tooltip') && h !== null
+      ? nameTooltip({ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }, data[h], nameKey, dataKey, config)
+      : null],
+    one('legend') ? nameLegend(data, nameKey, config) : null
   );
 });
 
 export const ChartRadar = component.ChartRadar((props = {}, ...configs) => {
- /**
-   * ChartRadar Component
-   *
-   * @component
-   * @description SVG radar chart engine with polar grid, angle axis labels, hover state, tooltip, and legend.
-   *
-   * @prop {Array<Object>} [data=[]] - Chart data array.
+  /**
+   * SVG radar chart with polar grid, angle labels, hover, tooltip and legend.
+   * @prop {Array<Object>} [data=[]] - Chart data.
    * @prop {number} [width=300] - SVG viewBox width.
    * @prop {number} [height=300] - SVG viewBox height.
-   * @prop {Object} [config] - Series configuration for labels and colors.
-   * @prop {string} [class] - Additional classes.
+   * @prop {Object} [config] - Series labels.
    */
-  const hoverIndex = signal.hoverIndex(null);
-  const {
-    data = [],
-    width = 300,
-    height = 300,
-    class: customClass = '',
-    ...rest
-  } = props;
+  const pointer = signal.pointer(null);
+  const { data = [], width = 300, height = 300, config, ...rest } = props;
+  const { one, all } = parse(configs);
+  const grid = one('polarGrid');
+  const axis = one('polarAngleAxis');
+  const radars = all('radar');
 
-  const flatConfigs = configs.flat(Infinity).filter(Boolean);
-  const polarGrid = flatConfigs.find(c => c._chartPrimitive === 'polarGrid');
-  const polarAngleAxis = flatConfigs.find(c => c._chartPrimitive === 'polarAngleAxis');
-  const tooltip = flatConfigs.find(c => c._chartPrimitive === 'tooltip');
-  const legend = flatConfigs.find(c => c._chartPrimitive === 'legend');
-  const radars = flatConfigs.filter(c => c._chartPrimitive === 'radar');
-
-  // Math Setup
   const cx = width / 2;
   const cy = height / 2;
-  // Make room for axis labels at the perimeter
-  const outerRadius = Math.min(cx, cy) - (polarAngleAxis ? 40 : 10);
-  const dataLen = data.length;
-  const angleStep = (Math.PI * 2) / Math.max(1, dataLen);
+  const outer = Math.min(cx, cy) - (axis ? 40 : 10); // room for perimeter labels
+  const n = data.length;
+  const step = 360 / Math.max(1, n);
+  const maxVal = maxOf(data, radars);
+  const at = (r, i) => polar(cx, cy, r, i * step);
+  const valueAt = (s, i) => at((num(data[i][s.dataKey]) / maxVal) * outer, i);
+  const points = (pts) => pts.map(p => `${p.x},${p.y}`).join(' ');
+  const h = n ? hoverOf(pointer, (x, y) => {
+    const deg = Math.atan2(y - cy, x - cx) * 180 / Math.PI + 90; // 0 at the top
+    return Math.round((deg + 360) % 360 / step) % n;
+  }) : null;
 
-  // Find max value across all data sources mapped to radars
-  const maxVal = Math.max(1, ...data.map(d => Math.max(...radars.map(r => d[r.dataKey] || 0))));
-
-  const getPolarPoint = (r, angle) => ({
-    x: cx + r * Math.sin(angle),
-    y: cy - r * Math.cos(angle) // -y because SVG 0,0 is top-left
-  });
-
-  const handleMove = (e) => {
-    const svgNode = e.target.closest('svg');
-    if (!svgNode) return;
-    const rect = svgNode.getBoundingClientRect();
-
-    // Calculate cursor coordinate relative to SVG center
-    const x = (e.clientX - rect.left) * (width / rect.width) - cx;
-    const y = (e.clientY - rect.top) * (height / rect.height) - cy;
-
-    // Find Angle
-    let angle = Math.atan2(y, x) + (Math.PI / 2); // Shift so 0 is Top
-    if (angle < 0) angle += Math.PI * 2;
-
-    // Find closest data index based on angle sector
-    const index = Math.round(angle / angleStep) % dataLen;
-    hoverIndex.value = index;
-  };
-  const handleLeave = () => { hoverIndex.value = null; };
-
-  const svgChildren = [];
-
-  // Render Polar Grid Background
-  if (polarGrid) {
-    const numLines = polarGrid.gridLines || 4;
-    const radiusStep = outerRadius / numLines;
-
-    const gridStrokeColor = polarGrid.stroke || 'var(--color-border-muted)';
-
-    for (let i = 1; i <= numLines; i++) {
-      const r = i * radiusStep;
-
-      const gridProps = {
-        stroke: gridStrokeColor,
-        strokeWidth: 1,
-        fill: (polarGrid.filled && i % 2 !== 0) ? 'var(--color-surface-muted)' : 'none',
-      };
-
-      if (polarGrid.gridType === 'circle') {
-        svgChildren.push(circle({ cx, cy, r, ...gridProps }));
-      } else {
-        // Draw Polygon Grid
-        const points = Array.from({ length: dataLen }).map((_, j) => {
-          const pt = getPolarPoint(r, j * angleStep);
-          return `${pt.x},${pt.y}`;
-        }).join(' ');
-        svgChildren.push(polygon({ points, ...gridProps }));
-      }
+  const plot = [];
+  if (grid) {
+    const rings = grid.gridLines || 4;
+    const stroke = grid.stroke || GRID;
+    for (let r = 1; r <= rings; r++) {
+      const attrs = { stroke, 'stroke-width': 1, fill: grid.filled && r % 2 ? TRACK : 'none' };
+      plot.push(grid.gridType === 'circle'
+        ? circle({ cx, cy, r: (r * outer) / rings, ...attrs })
+        : polygon({ points: points(data.map((_, i) => at((r * outer) / rings, i))), ...attrs }));
     }
-
-    // Radial Spoke Lines
-    if (polarGrid.radialLines !== false) {
-      data.forEach((_, j) => {
-        const endPt = getPolarPoint(outerRadius, j * angleStep);
-        svgChildren.push(line({
-          x1: cx, y1: cy, x2: endPt.x, y2: endPt.y,
-          stroke: gridStrokeColor,
-          strokeWidth: 1
-        }));
+    if (grid.radialLines !== false) {
+      data.forEach((_, i) => {
+        const e = at(outer, i);
+        plot.push(line({ x1: cx, y1: cy, x2: e.x, y2: e.y, stroke, 'stroke-width': 1 }));
       });
     }
   }
 
-  // Render Polar Angle Axis (Labels)
-  const labelCoordinates = []; // Keep track for tooltip snapping
-
-  if (polarAngleAxis) {
+  if (axis) {
     data.forEach((d, i) => {
-      const val = polarAngleAxis.tickFormatter ? polarAngleAxis.tickFormatter(d[polarAngleAxis.dataKey]) : d[polarAngleAxis.dataKey];
-      // Push text slightly further out than the outerRadius
-      const pt = getPolarPoint(outerRadius + 15, i * angleStep);
-      labelCoordinates.push(pt);
-
-      svgChildren.push(text({
-        x: pt.x, y: pt.y + 4, // +4 to optically vertically center the baseline
-        fill: hoverIndex.value === i ? 'var(--color-fg)' : 'var(--color-fg-muted)',
-        fontSize: 12,
-        fontWeight: hoverIndex.value === i ? '600' : '400',
-        textAnchor: 'middle',
-        style: { pointerEvents: 'none', transition: 'all 0.2s' }
-      }, val));
-    });
-  } else {
-    // Still calculate label coordinates for tooltip positioning even if hidden
-    data.forEach((_, i) => {
-      labelCoordinates.push(getPolarPoint(outerRadius + 15, i * angleStep));
+      const p = at(outer + 15, i);
+      plot.push(text({
+        x: p.x, y: p.y + 4, // +4 optically centres the baseline
+        fill: h === i ? INK : INK_MUTED, 'font-size': 12, 'font-weight': h === i ? '600' : '400', 'text-anchor': 'middle',
+        ...INERT, 'style-motion': 'all'
+      }, tick(axis, d)));
     });
   }
 
-  // Render Radar Polygons
-  radars.forEach((rConfig) => {
-    const color = rConfig.fill || rConfig.stroke || `var(--color-${rConfig.dataKey})`;
-
-    // Generate Polygon Points
-    const pts = data.map((d, i) => {
-      const val = d[rConfig.dataKey] || 0;
-      const r = (val / maxVal) * outerRadius;
-      const pt = getPolarPoint(r, i * angleStep);
-      return `${pt.x},${pt.y}`;
-    });
-
-    const isLinesOnly = rConfig.fillOpacity === 0;
-
-    svgChildren.push(polygon({
-      points: pts.join(' '),
-      fill: isLinesOnly ? 'none' : color,
-      fillOpacity: rConfig.fillOpacity !== undefined ? rConfig.fillOpacity : 0.4,
-      stroke: color,
-      strokeWidth: rConfig.strokeWidth || 2,
-      style: { pointerEvents: 'none' }
+  radars.forEach((s) => {
+    const color = seriesColor(s);
+    plot.push(polygon({
+      points: points(data.map((_, i) => valueAt(s, i))),
+      fill: s.fillOpacity === 0 ? 'none' : color, 'fill-opacity': s.fillOpacity ?? 0.4,
+      stroke: color, 'stroke-width': s.strokeWidth || 2, ...INERT
     }));
-
-    // Render optional dots
-    if (rConfig.dot) {
-      data.forEach((d, i) => {
-        const val = d[rConfig.dataKey] || 0;
-        const r = (val / maxVal) * outerRadius;
-        const pt = getPolarPoint(r, i * angleStep);
-        svgChildren.push(circle({
-          cx: pt.x, cy: pt.y, r: 3,
-          fill: 'var(--color-surface)', stroke: color, strokeWidth: 2,
-          style: { pointerEvents: 'none' }
-        }));
-      });
-    }
+    if (s.dot) data.forEach((_, i) => {
+      const p = valueAt(s, i);
+      plot.push(circle({ cx: p.x, cy: p.y, r: 3, fill: PAPER, stroke: color, 'stroke-width': 2, ...INERT }));
+    });
   });
 
-  // Render Hover Interactive Artifacts
-  if (hoverIndex.value !== null && hoverIndex.value !== undefined && data[hoverIndex.value]) {
-    // Hover Spoke Line highlight
-    const endPt = getPolarPoint(outerRadius, hoverIndex.value * angleStep);
-    svgChildren.push(line({
-      x1: cx, y1: cy, x2: endPt.x, y2: endPt.y,
-      stroke: 'var(--color-fg-subtle)', strokeWidth: 1, strokeDasharray: '4 4', style: { pointerEvents: 'none' }
-    }));
-
-    // Hover Vertex Dots
-    radars.forEach((rConfig) => {
-      const val = data[hoverIndex.value][rConfig.dataKey] || 0;
-      const r = (val / maxVal) * outerRadius;
-      const pt = getPolarPoint(r, hoverIndex.value * angleStep);
-      const color = rConfig.fill || rConfig.stroke || `var(--color-${rConfig.dataKey})`;
-      svgChildren.push(circle({
-        cx: pt.x, cy: pt.y, r: 4,
-        fill: 'var(--color-surface)', stroke: color, strokeWidth: 2, style: { pointerEvents: 'none' }
-      }));
+  let position;
+  if (h !== null) {
+    const e = at(outer, h);
+    plot.push(line({ x1: cx, y1: cy, x2: e.x, y2: e.y, stroke: INK_SUBTLE, 'stroke-width': 1, 'stroke-dasharray': '4 4', ...INERT }));
+    radars.forEach((s) => {
+      const p = valueAt(s, h);
+      plot.push(circle({ cx: p.x, cy: p.y, r: 4, fill: PAPER, stroke: seriesColor(s), 'stroke-width': 2, ...INERT }));
     });
-  }
-
-  // Calculate Tooltip Position
-  let tooltipStyles = {};
-  if (hoverIndex.value !== null && hoverIndex.value !== undefined && data[hoverIndex.value]) {
-    const anchorPt = labelCoordinates[hoverIndex.value];
-    // Simple heuristic to prevent tooltip from flying off screen:
-    // Anchor tooltip opposite to center relative to hovered point
-    const isRightHalf = anchorPt.x >= cx;
-    const isBottomHalf = anchorPt.y >= cy;
-
-    tooltipStyles = {
-      pointerEvents: 'none',
-      top: `${(anchorPt.y / height) * 100}%`,
-      left: `${(anchorPt.x / width) * 100}%`,
-      transform: `translate(${isRightHalf ? '-110%' : '10%'}, ${isBottomHalf ? '-110%' : '10%'})`,
-      padding: '0.75rem',
-      zIndex: 50,
-      minWidth: '130px'
+    // anchor at the label, offset away from the centre so it stays on screen
+    const a = at(outer + 15, h);
+    position = {
+      top: `${(a.y / height) * 100}%`,
+      left: `${(a.x / width) * 100}%`,
+      transform: `translate(${a.x >= cx ? '-110%' : '10%'}, ${a.y >= cy ? '-110%' : '10%'})`
     };
   }
 
-  return div(
-    { class: [design.layout.relative, design.layout.flex, design.layout.itemsCenter, customClass], style: { flexDirection: 'column', width: '100%', height: '100%' }, ...rest },
-
-    // Canvas
-    svg(
-      { viewBox: `0 0 ${width} ${height}`, style: { width: '100%', height: '100%', overflow: 'visible', cursor: 'crosshair' }, onpointermove: handleMove, onpointerleave: handleLeave },
-      ...svgChildren
-    ),
-
-    // Absolute Tooltip Overlay
-    (tooltip && hoverIndex.value !== null && data[hoverIndex.value]) ? div(
-      { class: [design.layout.absolute, design.bg.bgSurface, design.shape.border1, design.border.borderMuted, design.shape.radius2, design.effect.shadow2], style: tooltipStyles },
-      div({ class: [design.typography.weightMedium, design.typography.size1, design.layout.margin0, design.spacing.pb2] }, polarAngleAxis ? (polarAngleAxis.tickFormatter ? polarAngleAxis.tickFormatter(data[hoverIndex.value][polarAngleAxis.dataKey]) : data[hoverIndex.value][polarAngleAxis.dataKey]) : `Point ${hoverIndex.value}`),
-      ...radars.map(r => div(
-        { class: [design.layout.flex, design.layout.justifyBetween, design.layout.itemsCenter, design.spacing.gap4, design.typography.size1] },
-        div({ class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap2] },
-          div({ style: { width: '8px', height: '8px', borderRadius: '2px', backgroundColor: r.fill || r.stroke || `var(--color-${r.dataKey})` } }),
-          span({ class: design.fg.fgMuted }, props.config?.[r.dataKey]?.label || r.dataKey)
-        ),
-        span({ class: [design.typography.weightBold, design.typography.fontMono] }, data[hoverIndex.value][r.dataKey])
-      ))
-    ) : null,
-
-    legend ? renderLegend(radars, props.config) : null
+  return chart(POLAR_ROOT, rest, { viewBox: `0 0 ${width} ${height}`, ...tracking(pointer) }, plot,
+    [one('tooltip') && h !== null
+      ? tooltipBox(position, {}, axis ? tick(axis, data[h]) : data[h].name ?? `Point ${h}`, seriesRows(radars, data[h], config))
+      : null],
+    one('legend') ? legendFor(radars, config) : null
   );
 });

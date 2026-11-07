@@ -12,13 +12,13 @@ export async function testTextarea(mountPoint, assert) {
     controlledSignal = signal.textState('Initial text');
 
     return div(
-      { style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+      { 'style-layout': 'stack', 'style-gap': 'large' },
 
       // 1. Default & Uncontrolled
       Textarea({
         id: 'ta-default',
         value: 'Default value',
-        oninput: (val) => { lastInputValue = val; }
+        oninput: (e, val) => { lastInputValue = val; }
       }),
 
       // 2. States (Invalid, Disabled, Required)
@@ -30,7 +30,7 @@ export async function testTextarea(mountPoint, assert) {
       Textarea({
         id: 'ta-controlled',
         value: controlledSignal.value,
-        oninput: (v) => { controlledSignal.value = v; }
+        oninput: (e, v) => { controlledSignal.value = v; }
       })
     );
   });
@@ -66,7 +66,7 @@ export async function testTextarea(mountPoint, assert) {
 
   assert(
     taInvalid.getAttribute('aria-invalid') === 'true' &&
-    taInvalid.classList.contains('color-danger-border'),
+    taInvalid.getAttribute('style-tone') === 'danger',
     'States: invalid=true correctly applies aria-invalid and the danger border styling'
   );
 
@@ -96,26 +96,17 @@ export async function testTextarea(mountPoint, assert) {
   );
 
   // ==========================================
-  // --- PHYSICS ENGINE TESTS ---
+  // --- DESIGN ATTRIBUTE TESTS ---
   // ==========================================
-  // Hover
-  taDefault.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
-  await nextTick();
+  // Hover border and focus ring are pure CSS (style-emphasis="field" in giant.css).
   assert(
-    taDefault.style.boxShadow.includes('var(--color-bg-hover)'),
-    'Physics: pointerover seamlessly applies a halo box-shadow'
+    taDefault.getAttribute('style-emphasis') === 'field' && taDefault.getAttribute('style-border') === 'thin',
+    'Design: textarea renders as a field with a thin border'
   );
-
-  // Focus (should suppress the hover halo)
-  taDefault.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-  await nextTick();
   assert(
-    taDefault.style.boxShadow === '',
-    'Physics: focus correctly suppresses the custom hover halo to let the native focus ring shine'
+    !taDefault.hasAttribute('style-tone') && !taDefault.getAttribute('style'),
+    'Design: valid textarea has no tone override and no inline style'
   );
-
-  taDefault.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-  taDefault.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }));
 
   // ==========================================
   // --- IMPERATIVE API TESTS ---

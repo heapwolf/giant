@@ -23,12 +23,12 @@ export async function testText(mountPoint, assert) {
       // 4. Typography styling props
       Text({
         id: 'txt-styling',
-        size: 'size4',
-        weight: 'weightBold',
+        size: 'large',
+        weight: 'bold',
         align: 'center',
         leading: 'tight',
         tracking: 'wide',
-        transform: 'uppercase',
+        transform: 'upper',
         decoration: 'underline',
         wrap: 'balance'
       }, 'Styled Text'),
@@ -59,10 +59,10 @@ export async function testText(mountPoint, assert) {
   // ==========================================
   assert(
     elDefault.tagName === 'P' &&
-    elDefault.classList.contains('typography-size-2') &&
-    elDefault.classList.contains('typography-weight-regular') &&
-    elDefault.classList.contains('fg'),
-    'Defaults: Renders as a <p> tag with size2, weightRegular, and standard fg color'
+    elDefault.getAttribute('style-text') === 'medium' &&
+    elDefault.getAttribute('style-weight') === 'regular' &&
+    !elDefault.hasAttribute('style-tone'),
+    'Defaults: Renders as a <p> tag with medium text, regular weight, and inherited colour'
   );
 
   // ==========================================
@@ -77,24 +77,24 @@ export async function testText(mountPoint, assert) {
   // --- COLOR MAPPING TESTS ---
   // ==========================================
   assert(
-    elDanger.classList.contains('color-danger-fg') &&
-    elMuted.classList.contains('fg-muted'),
-    'Colors: Semantic color aliases successfully map to their respective design tokens'
+    elDanger.getAttribute('style-tone') === 'danger' &&
+    elMuted.getAttribute('style-tone') === 'muted',
+    'Colors: Semantic color aliases successfully map to style-tone'
   );
 
   // ==========================================
   // --- TYPOGRAPHY TOKEN TESTS ---
   // ==========================================
   assert(
-    elStyling.classList.contains('typography-size-4') &&
-    elStyling.classList.contains('typography-weight-bold') &&
-    elStyling.classList.contains('typography-align-center') &&
-    elStyling.classList.contains('typography-line-tight') &&
-    elStyling.classList.contains('typography-letter-wide') &&
-    elStyling.classList.contains('typography-transform-uppercase') &&
-    elStyling.classList.contains('typography-decoration-underline') &&
-    elStyling.classList.contains('typography-balance'),
-    'Typography: Prop aliases (align, leading, tracking, transform, decoration, wrap) successfully construct and apply design tokens'
+    elStyling.getAttribute('style-text') === 'large' &&
+    elStyling.getAttribute('style-weight') === 'bold' &&
+    elStyling.getAttribute('style-text-align') === 'center' &&
+    elStyling.getAttribute('style-leading') === 'tight' &&
+    elStyling.getAttribute('style-tracking') === 'wide' &&
+    elStyling.getAttribute('style-case') === 'upper' &&
+    elStyling.getAttribute('style-decoration') === 'underline' &&
+    elStyling.getAttribute('style-wrap') === 'balance',
+    'Typography: Prop aliases (align, leading, tracking, transform, decoration, wrap) map to style attributes'
   );
 
   // ==========================================

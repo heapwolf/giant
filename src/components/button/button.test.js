@@ -39,19 +39,16 @@ const ButtonTestApp = component.ButtonTestApp(() => {
         id: 'btn-loading',
         loading: true
       }, 'Loading')
+    ),
+
+    // 4. Variants & sizes
+    section({ class: 'test-section' },
+      h2('Attention / Small'),
+      Button({ id: 'btn-attention', variant: 'attention' }, 'Attention'),
+      Button({ id: 'btn-sm', size: 'sm' }, 'Small')
     )
   );
 }, 'button-test-app');
-
-// --- DOM EVENT HELPERS ---
-const dispatchPointer = (el, type) => {
-  el.dispatchEvent(new PointerEvent(type, {
-    bubbles: true,
-    cancelable: true,
-    button: 0, // Left click
-    pointerType: 'mouse'
-  }));
-};
 
 // --- TEST RUNNER EXPORT ---
 export async function testButton(mountPoint, assert) {
@@ -85,39 +82,31 @@ export async function testButton(mountPoint, assert) {
   );
 
   // ==========================================
-  // --- PHYSICS & POINTER TESTS ---
+  // --- DESIGN ATTRIBUTE TESTS ---
   // ==========================================
-
-  // 1. Hover State
-  dispatchPointer(standardBtn, 'pointerover');
-  await nextTick();
+  // Hover/press/focus visuals are pure CSS (style-emphasis in giant.css),
+  // so the component only has to emit the right attributes.
   assert(
-    standardBtn.style.boxShadow.includes('0 0 0 4px'),
-    'Physics: Applies hover halo box-shadow on pointerover'
+    standardBtn.getAttribute('style-tone') === 'neutral' && standardBtn.getAttribute('style-emphasis') === 'solid',
+    'Design: primary variant maps to neutral tone at solid emphasis'
   );
-
-  // 2. Active (Pressed) State
-  dispatchPointer(standardBtn, 'pointerdown');
-  await nextTick();
   assert(
-    standardBtn.style.transform === 'scale(0.96)',
-    'Physics: Compresses button to scale(0.96) on pointerdown'
+    standardBtn.getAttribute('style-pad-block') === 'small' && standardBtn.getAttribute('style-pad-inline') === 'small',
+    'Design: md size maps to small block / small inline padding'
   );
-
-  // 3. Release
-  dispatchPointer(standardBtn, 'pointerup');
-  await nextTick();
+  const attentionBtn = getBtn('btn-attention');
   assert(
-    standardBtn.style.transform === 'scale(1)',
-    'Physics: Rebounds button to scale(1) on pointerup'
+    attentionBtn.getAttribute('style-tone') === 'success' && attentionBtn.getAttribute('style-emphasis') === 'solid',
+    'Design: attention variant maps to success tone at solid emphasis'
   );
-
-  // 4. Pointer Out
-  dispatchPointer(standardBtn, 'pointerout');
-  await nextTick();
+  const smBtn = getBtn('btn-sm');
   assert(
-    !standardBtn.style.boxShadow.includes('0 0 0 4px'),
-    'Physics: Removes hover halo box-shadow on pointerout'
+    smBtn.getAttribute('style-case') === 'upper' && smBtn.getAttribute('style-tracking') === 'wide',
+    'Design: sm size is uppercase with wide tracking'
+  );
+  assert(
+    !standardBtn.getAttribute('style'),
+    'Design: renders no inline style'
   );
 
   // ==========================================
@@ -126,13 +115,12 @@ export async function testButton(mountPoint, assert) {
   const disabledBtn = getBtn('btn-disabled');
 
   assert(
-    disabledBtn.disabled === true && disabledBtn.getAttribute('aria-disabled') === 'true',
-    'Disabled: Applies native disabled attribute and aria-disabled'
+    disabledBtn.disabled === true,
+    'Disabled: Applies native disabled attribute'
   );
 
   // Attempt to click and trigger physics
   disabledBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  dispatchPointer(disabledBtn, 'pointerdown');
   await nextTick();
 
   // Because signals bind directly to `el.state` under the hood in giant.js,
@@ -140,11 +128,6 @@ export async function testButton(mountPoint, assert) {
   assert(
     appNode.state.disabledClicks === 0,
     'Disabled: Blocks onclick handler execution'
-  );
-
-  assert(
-    disabledBtn.style.transform === 'scale(1)',
-    'Disabled: Blocks pointer physics (does not compress)'
   );
 
   // ==========================================
@@ -158,7 +141,7 @@ export async function testButton(mountPoint, assert) {
   );
 
   assert(
-    loadingBtn.getAttribute('aria-busy') === 'true' && loadingBtn.getAttribute('data-loading') === 'true',
-    'Loading: Applies aria-busy and data-loading attributes'
+    loadingBtn.getAttribute('aria-busy') === 'true',
+    'Loading: Applies aria-busy'
   );
 }

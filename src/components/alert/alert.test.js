@@ -68,7 +68,7 @@ export async function testAlert(mountPoint, assert) {
   const basicInner = basicAlert.firstElementChild;
 
   assert(
-    basicInner && basicInner.style.display !== 'none',
+    basicInner && basicInner.hidden !== true,
     'Default: Alert is visible on initial mount'
   );
 
@@ -104,7 +104,7 @@ export async function testAlert(mountPoint, assert) {
 
   const dismissibleInner = dismissibleAlert.firstElementChild;
   assert(
-    dismissibleInner.style.display === 'none' && dismissibleInner.getAttribute('aria-hidden') === 'true',
+    dismissibleInner.hidden === true && dismissibleInner.getAttribute('aria-hidden') === 'true',
     'Dismissible: Clicking the close button hides the alert and sets aria-hidden="true"'
   );
 
@@ -117,7 +117,7 @@ export async function testAlert(mountPoint, assert) {
   apiAlert.hide();
   await nextTick();
   assert(
-    apiAlert.firstElementChild.style.display === 'none',
+    apiAlert.firstElementChild.hidden === true,
     'API: hide() programmatically hides the alert'
   );
 
@@ -125,18 +125,18 @@ export async function testAlert(mountPoint, assert) {
   apiAlert.show();
   await nextTick();
   assert(
-    apiAlert.firstElementChild.style.display !== 'none',
+    apiAlert.firstElementChild.hidden !== true,
     'API: show() programmatically restores visibility'
   );
 
   // Test toggle()
   apiAlert.toggle();
   await nextTick();
-  assert(apiAlert.firstElementChild.style.display === 'none', 'API: toggle() works (hide pass)');
+  assert(apiAlert.firstElementChild.hidden === true, 'API: toggle() works (hide pass)');
 
   apiAlert.toggle();
   await nextTick();
-  assert(apiAlert.firstElementChild.style.display !== 'none', 'API: toggle() works (show pass)');
+  assert(apiAlert.firstElementChild.hidden !== true, 'API: toggle() works (show pass)');
 
   // Test update()
   apiAlert.update({ title: 'Updated Title', variant: 'success' });

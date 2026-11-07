@@ -1,72 +1,53 @@
-import { component, html, design, signal } from '../../../giant.js';
+import { component, html, signal } from '../../../giant.js';
 
 const { div } = html;
 
-export const Progress = component.Progress((props, ...children) => {
-  const {
-    value = null,
-    max = 100,
-    getValueLabel,
-    indicatorClass = '',
-    class: className = '',
-    style = {},
-    ...rest
-  } = props;
+// The fill inherits style-tone from the root, e.g. Progress({ 'style-tone': 'success' }).
+export const Progress = component.Progress((props = {}) => {
+  const { value = null, max = 100, style = {}, ...rest } = props;
 
-  const currentValue = signal.value(value);
+  const current = signal.value(value);
   const maxSignal = signal.max(max);
   const prevValue = signal._prevValue(value);
 
-  if (value !== undefined && value !== prevValue.value) {
-    currentValue.value = value;
+  if (value !== prevValue.value) {
+    current.value = value;
     prevValue.value = value;
   }
 
-  const val = currentValue.value;
   const m = maxSignal.value;
-  const isIndeterminate = val === null || val === undefined;
-  const safeValue = isIndeterminate ? null : Math.min(m, Math.max(0, val));
-  const percentage = isIndeterminate ? null : (safeValue / m) * 100;
-  const state = isIndeterminate ? 'indeterminate' : safeValue === m ? 'complete' : 'loading';
+  const indeterminate = current.value == null;
+  const safe = indeterminate ? null : Math.min(m, Math.max(0, current.value));
+  const state = indeterminate ? 'indeterminate' : safe === m ? 'complete' : 'loading';
 
   return [
     {
-      setValue: (v) => { currentValue.value = v; },
-      getValue: () => currentValue.value,
-      setMax: (newM) => { maxSignal.value = newM; }
+      setValue: (v) => { current.value = v; },
+      getValue: () => current.value,
+      setMax: (v) => { maxSignal.value = v; }
     },
     div(
       {
+        'style-position': 'relative',
+        'style-width': 'full',
+        'style-overflow': 'hidden',
+        'style-radius': 'round',
+        'style-surface': 'muted',
         ...rest,
         role: 'progressbar',
         'aria-valuemin': '0',
         'aria-valuemax': String(m),
-        'aria-valuenow': isIndeterminate ? null : safeValue,
+        'aria-valuenow': safe,
         'data-state': state,
-        class: [
-          design.layout.relative,
-          design.size.wFull,
-          design.shape.radiusRound,
-          design.bg.bgSurfaceMuted,
-          className
-        ],
-        style: { height: '0.75rem', overflow: 'hidden', display: 'block', ...style }
+        // TODO(style): no small fixed height; a `style-height="xsmall"` (0.75rem track) would replace this.
+        style: { height: '0.75rem', ...style }
       },
       div({
-        class: [
-          design.layout.flex,
-          design.size.wFull,
-          design.size.hFull,
-          indicatorClass
-        ],
+        'style-height': 'full',
+        'style-emphasis': 'solid',
+        'style-motion': 'all',
         'data-state': state,
-        style: {
-          backgroundColor: indicatorClass ? undefined : 'var(--color-primary, var(--color-primary-5, blue))',
-          height: '100%',
-          width: '100%',
-          transform: isIndeterminate ? undefined : `translateX(${percentage - 100}%)`,
-          transition: 'transform 600ms cubic-bezier(0.65, 0, 0.35, 1)'
-        }
+        style: indeterminate ? undefined : { transform: `translateX(${(safe / m) * 100 - 100}%)` }
       })
     )
   ];

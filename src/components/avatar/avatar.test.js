@@ -1,4 +1,4 @@
-import { component, createRoot, html, design } from '../../giant.js';
+import { component, createRoot, html } from '../../giant.js';
 import { Avatar, AvatarImage, AvatarFallback } from './avatar.js';
 
 const { div, section, h2 } = html;
@@ -37,6 +37,13 @@ const AvatarTestApp = component.AvatarTestApp(() => {
         AvatarFallback({}, 'EF'),
         AvatarImage({ id: 'image-broken', src: validImageSrc })
       )
+    ),
+
+    // 4. Generated
+    section({ class: 'test-section' },
+      h2('Generated'),
+      Avatar({ id: 'avatar-generated', generate: 'ada.lovelace@example.com' }),
+      Avatar({ id: 'avatar-generated-same', generate: 'ada.lovelace@example.com', alt: 'Ada' })
     )
   );
 }, 'avatar-test-app');
@@ -55,8 +62,8 @@ export async function testAvatar(mountPoint, assert) {
   const fallbackText = document.getElementById('fallback-1');
 
   assert(
-    fallbackInner && fallbackInner.style.width === '2.5rem' && fallbackInner.className.includes(design.layout.overflowHidden),
-    'Base: Avatar wrapper applies correct default inline styles and framework classes'
+    fallbackInner && fallbackInner.getAttribute('style-size') === 'medium' && fallbackInner.getAttribute('style-overflow') === 'hidden',
+    'Base: Avatar wrapper applies correct default size and style attributes'
   );
 
   assert(
@@ -119,5 +126,27 @@ export async function testAvatar(mountPoint, assert) {
   assert(
     recoveredImgElement !== null && recoveredImgElement.getAttribute('src') === validImageSrc2,
     'Error Lifecycle: Image resets error state and remounts when a new valid src is provided'
+  );
+
+  // ==========================================
+  // --- GENERATED AVATAR TESTS ---
+  // ==========================================
+  const generatedImg = document.getElementById('avatar-generated').querySelector('img');
+  const sameImg = document.getElementById('avatar-generated-same').querySelector('img');
+  const src = generatedImg?.getAttribute('src') || '';
+
+  assert(
+    src.startsWith('data:image/svg+xml') && decodeURIComponent(src).includes('>AL</text>'),
+    'Generate: Renders an SVG avatar with initials from the email'
+  );
+
+  assert(
+    generatedImg.getAttribute('alt') === 'ada.lovelace@example.com' && sameImg.getAttribute('alt') === 'Ada',
+    'Generate: alt defaults to the generate string and can be overridden'
+  );
+
+  assert(
+    sameImg.getAttribute('src') === src,
+    'Generate: The same string always produces the same avatar'
   );
 }

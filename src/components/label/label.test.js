@@ -1,4 +1,4 @@
-import { component, createRoot, html, design } from '../../giant.js';
+import { component, createRoot, html } from '../../giant.js';
 import { Label } from './label.js';
 
 const { div, section, h2, input } = html;
@@ -7,12 +7,12 @@ const nextTick = () => new Promise(resolve => setTimeout(resolve, 20));
 
 // --- TEST UI SETUP ---
 const LabelTestApp = component.LabelTestApp(() => {
-  return div({ class: 'label-test-wrapper', style: { display: 'flex', flexDirection: 'column', gap: '20px' } },
+  return div({ class: 'label-test-wrapper', 'style-layout': 'stack', 'style-gap': 'large' },
 
     // 1. Basic Label
     section({ class: 'test-section' },
       h2('Basic Label'),
-      Label({ id: 'label-basic', htmlFor: 'input-1' }, 'Username'),
+      Label({ id: 'label-basic', for: 'input-1' }, 'Username'),
       input({ id: 'input-1', type: 'text' })
     ),
 
@@ -68,8 +68,8 @@ export async function testLabel(mountPoint, assert) {
   );
 
   assert(
-    asterisk && asterisk.className.includes(design.fg.dangerFg),
-    'Style: Required asterisk uses the design system danger foreground token'
+    asterisk && asterisk.getAttribute('style-tone') === 'danger',
+    'Style: Required asterisk uses the danger tone'
   );
 
   // ==========================================

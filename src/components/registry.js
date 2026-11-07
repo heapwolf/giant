@@ -1,4 +1,4 @@
-import { component, design, match } from '../../giant.js';
+import { component, match } from '../../giant.js';
 
 import { Button } from './button/button.js';
 import { Text } from './text/text.js';
@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs/tabs.js';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './accordion/accordion.js';
 import { Avatar, AvatarImage, AvatarFallback } from './avatar/avatar.js';
 import { Progress } from './progress/progress.js';
-import { VTable } from './vtable/vtable.js'
+import { VTable } from './vtable/vtable.js';
 import { Separator } from './separator/separator.js';
 import { Spinner } from './spinner/spinner.js';
 import { Textarea } from './textarea/textarea.js';
@@ -24,229 +24,111 @@ import { Toaster, toast } from './toast/toast.js';
 import { Tooltip } from './tooltip/tooltip.js';
 import { Slider } from './slider/slider.js';
 import { Radio, RadioItem } from './radio/radio.js';
-
+import { Tree } from './tree/tree.js';
+import { SplitLayout } from './split/split.js';
+import { CreditCardInput } from './creditcardinput/creditcardinput.js';
+import { Menu } from './menu/menu.js';
 import {
-  Menu,
-  MenuTrigger,
-  MenuContent,
-  MenuGroup,
-  MenuItem,
-  MenuSeparator,
-  MenuShortcut,
-  MenuSub,
-  MenuSubTrigger,
-  MenuSubContent,
-  MenuCheckboxItem,
-  MenuRadioGroup,
-  MenuRadioItem
-} from './menu/menu.js';
-
-import {
-  ChartContainer,
-  ChartBars,
-  ChartLine,
-  ChartPie,
-  ChartRadar,
-  CartesianGrid,
-  XAxis,
-  PolarGrid,
-  PolarAngleAxis,
-  ChartTooltip,
-  ChartLegend,
-  ChartRadial,
-  RadialBar,
-  Bar,
-  Line,
-  Pie,
-  Radar
+  ChartContainer, ChartBars, ChartLine, ChartPie, ChartRadar, CartesianGrid, XAxis, PolarGrid, PolarAngleAxis,
+  ChartTooltip, ChartLegend, ChartRadial, RadialBar, Bar, Line, Pie, Radar
 } from './charts/charts.js';
 
+const clean = (s = '') => s.replace(/\s+/g, ' ').trim();
+
+// "[name=default]" → { name, defaultValue, isOptional }
+const parseName = (raw) => {
+  let name = raw.trim();
+  let defaultValue = null;
+  const isOptional = name.startsWith('[') && name.endsWith(']');
+  if (isOptional) {
+    name = name.slice(1, -1);
+    const eq = name.indexOf('=');
+    if (eq !== -1) {
+      defaultValue = name.slice(eq + 1).trim();
+      name = name.slice(0, eq).trim();
+    }
+  }
+  if (/^(['"]).*\1$/.test(name)) name = name.slice(1, -1);
+  return { name, defaultValue, isOptional };
+};
+
+// Reads @prop/@param and @method JSDoc tags from a component's source.
 export function introspectComponent(compFn) {
   if (!compFn) return { props: null, methods: null };
 
-  const targetFn = compFn.rawFn || compFn.raw || compFn.render || compFn;
-  const source = targetFn.toString();
-
+  const source = (compFn.rawFn || compFn.raw || compFn.render || compFn).toString();
   const props = [];
   const methods = [];
 
-  const clean = (s = '') => s.replace(/\s+/g, ' ').trim();
-
-  const parseName = (raw) => {
-    let name = raw.trim();
-    let defaultValue = null;
-    let isOptional = false;
-
-    if (name.startsWith('[') && name.endsWith(']')) {
-      isOptional = true;
-      name = name.slice(1, -1);
-
-      const eq = name.indexOf('=');
-      if (eq !== -1) {
-        defaultValue = name.slice(eq + 1).trim();
-        name = name.slice(0, eq).trim();
-      }
-    }
-
-    if (
-      (name.startsWith("'") && name.endsWith("'")) ||
-      (name.startsWith('"') && name.endsWith('"'))
-    ) {
-      name = name.slice(1, -1);
-    }
-
-    return { name, defaultValue, isOptional };
-  };
-
   const addProp = (entry) => {
-    if (!entry.name) return;
-
-    if (
-      entry.name === 'props' ||
-      entry.name === 'children' ||
-      entry.name === 'e' ||
-      entry.name.startsWith('...')
-    ) return;
-
+    if (!entry.name || ['props', 'children', 'e'].includes(entry.name) || entry.name.startsWith('...')) return;
     const existing = props.find((p) => p.name === entry.name);
-
-    if (existing) {
-      existing.type ||= entry.type;
-      existing.defaultValue ??= entry.defaultValue;
-      existing.isOptional ||= entry.isOptional;
-      existing.description ||= entry.description;
-      return;
-    }
-
-    props.push(entry);
+    if (!existing) return props.push(entry);
+    existing.type ||= entry.type;
+    existing.defaultValue ??= entry.defaultValue;
+    existing.isOptional ||= entry.isOptional;
+    existing.description ||= entry.description;
   };
 
-  const jsdocBlocks = [...source.matchAll(/\/\*\*([\s\S]*?)\*\//g)];
+  for (const block of source.matchAll(/\/\*\*([\s\S]*?)\*\//g)) {
+    let current = null;
+    const flush = () => { if (current?.kind === 'prop') addProp(current.entry); current = null; };
 
-  for (const match of jsdocBlocks) {
-    const lines = match[1]
-      .split('\n')
-      .map((l) => l.replace(/^\s*\*\s?/, ''));
+    for (const rawLine of block[1].split('\n')) {
+      const line = rawLine.replace(/^\s*\*\s?/, '').trim();
 
-    let currentProp = null;
-    let currentMethod = null;
-
-    for (let line of lines) {
-      line = line.trim();
-
-      const propMatch = line.match(
-        /^@(?:prop|property|param)\s+\{([^}]+)\}\s+(\[[^\]]+\]|"[^"]+"|'[^']+'|[^\s]+)(?:\s*-\s*(.*))?$/
-      );
-
-      if (propMatch) {
-        if (currentProp) addProp(currentProp);
-
-        const { name, defaultValue, isOptional } = parseName(propMatch[2]);
-
-        currentProp = {
-          name,
-          type: clean(propMatch[1]),
-          defaultValue,
-          isOptional,
-          description: clean(propMatch[3] || '')
-        };
-
-        currentMethod = null;
+      const prop = line.match(/^@(?:prop|property|param)\s+\{([^}]+)\}\s+(\[[^\]]+\]|"[^"]+"|'[^']+'|[^\s]+)(?:\s*-\s*(.*))?$/);
+      if (prop) {
+        flush();
+        current = { kind: 'prop', entry: { ...parseName(prop[2]), type: clean(prop[1]), description: clean(prop[3]) } };
         continue;
       }
 
-      const methodMatch = line.match(
-        /^@method\s+([a-zA-Z0-9_$]+)\(([^)]*)\)(?:\s*-\s*(.*))?$/
-      );
-
-      if (methodMatch) {
-        if (currentProp) {
-          addProp(currentProp);
-          currentProp = null;
-        }
-
-        currentMethod = {
-          name: methodMatch[1],
-          args: methodMatch[2].trim(),
-          description: clean(methodMatch[3] || '')
-        };
-
-        methods.push(currentMethod);
+      const method = line.match(/^@method\s+([a-zA-Z0-9_$]+)\(([^)]*)\)(?:\s*-\s*(.*))?$/);
+      if (method) {
+        flush();
+        const entry = { name: method[1], args: method[2].trim(), description: clean(method[3]) };
+        methods.push(entry);
+        current = { kind: 'method', entry };
         continue;
       }
 
-      if (currentProp && line && !line.startsWith('@')) {
-        currentProp.description += ' ' + clean(line);
-      }
-
-      if (currentMethod && line && !line.startsWith('@')) {
-        currentMethod.description += ' ' + clean(line);
-      }
+      if (current && line && !line.startsWith('@')) current.entry.description += ' ' + clean(line);
     }
-
-    if (currentProp) addProp(currentProp);
+    flush();
   }
 
-  return {
-    props: props.length ? props : null,
-    methods: methods.length ? methods : null
-  };
+  return { props: props.length ? props : null, methods: methods.length ? methods : null };
 }
 
+// Turns a demo function into a copy-pasteable snippet with its imports.
 const autoFormatCode = (fn, exports = [], filepath = '') => {
   if (typeof fn !== 'function') return '';
 
   const raw = fn.toString();
-  const lines = raw.split('\n');
-  let formatted = raw.trim();
+  const [first, ...rest] = raw.split('\n');
+  const indents = rest.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length);
+  const minIndent = indents.length ? Math.min(...indents) : 0;
+  const formatted = [first, ...rest.map((l) => l.slice(minIndent))].join('\n').trim();
 
-  if (lines.length > 1) {
-    const indents = lines.slice(1)
-      .filter(line => line.trim().length > 0)
-      .map(line => line.match(/^\s*/)[0].length);
+  let imports = raw.includes('match') ? `import { match } from './giant.js';\n` : '';
+  const names = exports.map((ex) => ex.name).filter(Boolean);
+  if (names.length && filepath) imports += `import { ${names.join(', ')} } from './${filepath.split('/').pop()}';\n`;
 
-    const minIndent = indents.length > 0 ? Math.min(...indents) : 0;
-    formatted = lines.map((line, i) => i === 0 ? line : line.slice(minIndent)).join('\n');
-  }
-
-  let importsStr = '';
-
-  const giantImports = ['design', 'match'].filter(token => raw.includes(token));
-  if (giantImports.length > 0) {
-    importsStr += `import { ${giantImports.join(', ')} } from './giant.js';\n`;
-  }
-
-  if (exports?.length > 0 && filepath) {
-    const exportNames = exports.map(ex => ex.name).filter(Boolean);
-    const flatPath = `./${filepath.split('/').pop()}`;
-    importsStr += `import { ${exportNames.join(', ')} } from '${flatPath}';\n`;
-  }
-
-  return importsStr ? `${importsStr}\n${formatted}` : formatted;
+  return imports ? `${imports}\n${formatted}` : formatted;
 };
 
-// =========================================================
-// UPDATED COMPONENT DEFINER
-// =========================================================
+// `code` follows the variant the ComponentViewer has selected (_activeVariantIndex).
 const documentComponent = (config) => {
-  const component = { ...config };
-
-  if (!component.code && component.render) {
-    Object.defineProperty(component, 'code', {
-      get() {
-        // Read the active index set by the ComponentViewer
-        if (Array.isArray(this.render)) {
-          const activeFn = this.render[this._activeVariantIndex || 0];
-          return autoFormatCode(activeFn, this.exports, this.filepath);
-        }
-        return autoFormatCode(this.render, this.exports, this.filepath);
-      },
-      enumerable: true,
-      configurable: true
-    });
-  }
-
-  return component;
+  if (config.code || !config.render) return config;
+  return Object.defineProperty({ ...config }, 'code', {
+    get() {
+      const fn = Array.isArray(this.render) ? this.render[this._activeVariantIndex || 0] : this.render;
+      return autoFormatCode(fn, this.exports, this.filepath);
+    },
+    enumerable: true,
+    configurable: true
+  });
 };
 
 export const COMPONENTS = [
@@ -261,78 +143,30 @@ export const COMPONENTS = [
     state: "Internal State or Controlled",
     exports: [Accordion, AccordionItem, AccordionTrigger, AccordionContent],
     render: [
-      /**
-       * Variation 1: Single (Default)
-       * Allows only one item to be open at a time. Clicking an open item collapses it.
-       */
+      // Only one item open at a time; clicking the open item collapses it.
       function AccordionSingle(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          Label('Single (Default)'),
-          Accordion({ type: 'single', collapsible: true },
-            AccordionItem({ value: 'item-1' },
-              AccordionTrigger('Is it accessible?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It follows WAI-ARIA design patterns.')
-            ),
-            AccordionItem({ value: 'item-2' },
-              AccordionTrigger('Is it styled?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It comes with default styles.')
-            ),
-            AccordionItem({ value: 'item-3' },
-              AccordionTrigger('Is it animated?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It has smooth animations.')
-            )
-          )
+        return Accordion({ type: 'single', collapsible: true, 'style-width': 'full', 'style-max-width': 'medium' },
+          AccordionItem({ value: 'item-1' }, AccordionTrigger('Is it accessible?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It follows WAI-ARIA design patterns.')),
+          AccordionItem({ value: 'item-2' }, AccordionTrigger('Is it styled?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It comes with default styles.')),
+          AccordionItem({ value: 'item-3' }, AccordionTrigger('Is it animated?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It has smooth animations.'))
         );
       },
 
-      /**
-       * Variation 2: Multiple
-       * Allows multiple items to be open simultaneously.
-       */
+      // Several items can be open at once.
       function AccordionMultiple(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          Label('Multiple (Open multiple items)'),
-          Accordion({ type: 'multiple' },
-            AccordionItem({ value: 'item-1' },
-              AccordionTrigger('Is it accessible?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It follows WAI-ARIA design patterns.')
-            ),
-            AccordionItem({ value: 'item-2' },
-              AccordionTrigger('Is it styled?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It comes with default styles.')
-            ),
-            AccordionItem({ value: 'item-3' },
-              AccordionTrigger('Is it animated?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It has smooth animations.')
-            )
-          )
+        return Accordion({ type: 'multiple', 'style-width': 'full', 'style-max-width': 'medium' },
+          AccordionItem({ value: 'item-1' }, AccordionTrigger('Is it accessible?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It follows WAI-ARIA design patterns.')),
+          AccordionItem({ value: 'item-2' }, AccordionTrigger('Is it styled?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It comes with default styles.')),
+          AccordionItem({ value: 'item-3' }, AccordionTrigger('Is it animated?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It has smooth animations.'))
         );
       },
 
-      /**
-       * Variation 3: Non-Collapsible & Default Value
-       * Starts with one item open, and it cannot be collapsed unless another item is clicked.
-       */
+      // Starts open on item 2; one item always stays open.
       function AccordionNonCollapsible(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          Label('Single Non-Collapsible (Always one open)'),
-          Accordion({ type: 'single', collapsible: false, defaultValue: 'item-2' },
-            AccordionItem({ value: 'item-1' },
-              AccordionTrigger('Is it accessible?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It follows WAI-ARIA design patterns.')
-            ),
-            AccordionItem({ value: 'item-2' },
-              AccordionTrigger('Is it styled?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It comes with default styles.')
-            ),
-            AccordionItem({ value: 'item-3' },
-              AccordionTrigger('Is it animated?'),
-              AccordionContent({ class: design.fg.fgMuted }, 'Yes. It has smooth animations.')
-            )
-          )
+        return Accordion({ type: 'single', collapsible: false, defaultValue: 'item-2', 'style-width': 'full', 'style-max-width': 'medium' },
+          AccordionItem({ value: 'item-1' }, AccordionTrigger('Is it accessible?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It follows WAI-ARIA design patterns.')),
+          AccordionItem({ value: 'item-2' }, AccordionTrigger('Is it styled?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It comes with default styles.')),
+          AccordionItem({ value: 'item-3' }, AccordionTrigger('Is it animated?'), AccordionContent({ 'style-tone': 'muted' }, 'Yes. It has smooth animations.'))
         );
       }
     ]
@@ -348,16 +182,9 @@ export const COMPONENTS = [
     state: "Stateless (Pure UI)",
     exports: [Alert, AlertTitle, AlertDescription],
     render: function AlertsExample(state) {
-      return div(
-        { class: [design.layout.stack, design.size.wFull] },
-        Alert(
-          AlertTitle('Heads up!'),
-          AlertDescription( 'You can add components to your app.')
-        ),
-        Alert({ variant: 'destructive' },
-          AlertTitle('Error'),
-          AlertDescription('Something went wrong.')
-        )
+      return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full' },
+        Alert(AlertTitle('Heads up!'), AlertDescription('You can add components to your app.')),
+        Alert({ variant: 'destructive' }, AlertTitle('Error'), AlertDescription('Something went wrong.'))
       );
     }
   }),
@@ -366,29 +193,26 @@ export const COMPONENTS = [
     id: 'Button',
     title: 'Button',
     description: 'Interactive elements for user actions.',
-    ...introspectComponent(Button),
     filepath: './button/button.js',
     imports: "{ Button } from './button/button.js'",
     a11y: "Native <button> focus management & semantics",
     state: "Stateless (Pure UI)",
     exports: [Button],
     render: function ButtonExample(state) {
-      return div(
-        { class: [design.layout.stack, design.size.wFull, design.layout.itemsCenter] },
-        div(
-          { class: [design.layout.cluster, design.layout.justifyCenter] },
-          Button('Default'),
+      return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-align': 'center', 'style-width': 'full' },
+        div({ 'style-layout': 'cluster', 'style-gap': 'medium', 'style-justify': 'center' },
+          Button('Primary'),
           Button({ variant: 'secondary' }, 'Secondary'),
           Button({ disabled: true }, 'Disabled'),
           Button({ variant: 'outline' }, 'Outline'),
           Button({ variant: 'ghost' }, 'Ghost'),
           Button({ variant: 'link' }, 'Link'),
-          Button({ variant: 'destructive' }, 'Destructive')
+          Button({ variant: 'destructive' }, 'Destructive'),
+          Button({ variant: 'attention' }, 'Attention')
         ),
-        div(
-          { class: [design.layout.cluster, design.layout.itemsCenter, design.layout.justifyCenter] },
+        div({ 'style-layout': 'cluster', 'style-gap': 'medium', 'style-justify': 'center' },
           Button({ size: 'sm' }, 'Small'),
-          Button({ size: 'default' }, 'Default'),
+          Button({ size: 'md' }, 'Medium'),
           Button({ size: 'lg' }, 'Large'),
           Button({ size: 'icon' }, '♥︎')
         )
@@ -405,19 +229,22 @@ export const COMPONENTS = [
     a11y: "Role=\"region\" (optional via props)",
     state: "Stateless (Pure UI)",
     exports: [Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter],
-    render: function CardExample(state) {
-      return Card(
-        CardHeader(
-          CardTitle('Card Title'),
-          CardDescription('Card description goes here')
-        ),
-        CardContent('This is the card content area.'),
-        CardFooter(
-          Button({ variant: 'outline' }, 'Cancel'),
-          Button('Save')
-        )
-      );
-    }
+    render: [
+      function CardExample(state) {
+        return Card(
+          CardHeader(CardTitle('Card Title'), CardDescription('Card description goes here')),
+          CardContent('This is the card content area.'),
+          CardFooter(Button({ variant: 'outline' }, 'Cancel'), Button('Save'))
+        );
+      },
+
+      // variant: default | outline | transparent | sunk
+      function CardVariants(state) {
+        return div({ 'style-layout': 'grid', 'style-gap': 'medium', 'style-width': 'full' },
+          ...['default', 'outline', 'transparent', 'sunk'].map((variant) => Card({ variant }, CardHeader(CardTitle(variant))))
+        );
+      }
+    ]
   }),
 
   documentComponent({
@@ -428,23 +255,19 @@ export const COMPONENTS = [
     imports: "import { ChartContainer, ChartBars, ChartLine, ChartPie, ChartRadar, ChartRadial, CartesianGrid, XAxis, PolarGrid, PolarAngleAxis, ChartTooltip, ChartLegend, Bar, Line, Pie, Radar, RadialBar } from './charts.js'",
     exports: [ChartContainer, ChartBars, ChartLine, ChartPie, ChartRadar, ChartRadial, CartesianGrid, XAxis, PolarGrid, PolarAngleAxis, ChartTooltip, ChartLegend, Bar, Line, Pie, Radar, RadialBar],
     render: [
-      /**
-       * Simple Bar Chart Example
-       */
       function BarChartExample(state) {
         const chartData = [
           { month: "January", desktop: 186 }, { month: "February", desktop: 305 },
           { month: "March", desktop: 237 }, { month: "April", desktop: 73 },
           { month: "May", desktop: 209 }, { month: "June", desktop: 214 },
         ];
-        const chartConfig = { desktop: { label: "Desktop", color: design.color.accent[3] } };
+        const chartConfig = { desktop: { label: "Desktop", color: 'var(--series-1)' } };
 
-        return Card({ style: { width: '100%', maxWidth: '600px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'large' },
           CardHeader(CardTitle('Bar Chart - Simple')),
           CardContent(
             ChartContainer({ config: chartConfig, style: { height: '250px' } },
-              ChartBars(
-                { data: chartData, config: chartConfig },
+              ChartBars({ data: chartData, config: chartConfig },
                 CartesianGrid({ vertical: false }),
                 XAxis({ dataKey: 'month', tickFormatter: (value) => value.slice(0, 3) }),
                 ChartTooltip({ cursor: true }),
@@ -455,9 +278,6 @@ export const COMPONENTS = [
         );
       },
 
-      /**
-       * Multiple Line Chart Example
-       */
       function LineChartExample(state) {
         const chartData = [
           { month: "January", desktop: 186, mobile: 80 }, { month: "February", desktop: 305, mobile: 200 },
@@ -465,16 +285,15 @@ export const COMPONENTS = [
           { month: "May", desktop: 209, mobile: 130 }, { month: "June", desktop: 214, mobile: 140 },
         ];
         const chartConfig = {
-          desktop: { label: "Desktop", color: design.color.accent[3] },
-          mobile: { label: "Mobile", color: design.color.neutral[5] }
+          desktop: { label: "Desktop", color: 'var(--series-1)' },
+          mobile: { label: "Mobile", color: 'var(--series-2)' }
         };
 
-        return Card({ style: { width: '100%', maxWidth: '600px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'large' },
           CardHeader(CardTitle('Line Chart - Multiple')),
           CardContent(
             ChartContainer({ config: chartConfig, style: { height: '250px' } },
-              ChartLine(
-                { data: chartData, config: chartConfig },
+              ChartLine({ data: chartData, config: chartConfig },
                 CartesianGrid({ vertical: false }),
                 XAxis({ dataKey: 'month', tickFormatter: (value) => value.slice(0, 3) }),
                 ChartTooltip({ cursor: true }),
@@ -486,25 +305,21 @@ export const COMPONENTS = [
         );
       },
 
-      /**
-       * Donut Chart Example (Pie with innerRadius)
-       */
       function DonutChartExample(state) {
         const chartData = [
-          { browser: "Chrome", visitors: 275, fill: design.color.accent[4] },
-          { browser: "Safari", visitors: 200, fill: design.color.accent[3] },
-          { browser: "Firefox", visitors: 187, fill: design.color.accent[2] },
-          { browser: "Edge", visitors: 173, fill: design.color.accent[1] },
-          { browser: "Other", visitors: 90, fill: design.color.neutral[3] },
+          { browser: "Chrome", visitors: 275, fill: 'var(--series-1)' },
+          { browser: "Safari", visitors: 200, fill: 'var(--series-2)' },
+          { browser: "Firefox", visitors: 187, fill: 'var(--series-3)' },
+          { browser: "Edge", visitors: 173, fill: 'var(--series-4)' },
+          { browser: "Other", visitors: 90, fill: 'var(--series-5)' },
         ];
         const chartConfig = { visitors: { label: "Visitors" } };
 
-        return Card({ style: { width: '100%', maxWidth: '600px' } },
-          CardHeader({ class: design.layout.itemsCenter }, CardTitle('Donut Chart')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
+        return Card({ 'style-width': 'full', 'style-max-width': 'large' },
+          CardHeader({ 'style-align': 'center' }, CardTitle('Donut Chart')),
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
             ChartContainer({ config: chartConfig, style: { height: '300px', width: '300px' } },
-              ChartPie(
-                { data: chartData, config: chartConfig, width: 300, height: 300 },
+              ChartPie({ data: chartData, config: chartConfig, width: 300, height: 300 },
                 ChartTooltip(),
                 Pie({ dataKey: 'visitors', nameKey: 'browser', innerRadius: 80 })
               )
@@ -513,85 +328,61 @@ export const COMPONENTS = [
         );
       },
 
-      /**
-       * Interactive Radar Chart Explorer
-       */
       function RadarChartExplorer(state) {
         if (!state.radarSetup) {
-          state.radarGrid = true;
-          state.radarGridType = 'polygon';
-          state.radarGridFilled = false;
-          state.radarRadialLines = true;
-          state.radarDots = false;
-          state.radarLinesOnly = false;
-          state.radarMultiple = false;
-          state.radarLegend = false;
-          state.radarSetup = true;
+          Object.assign(state, {
+            radarGrid: true, radarGridType: 'polygon', radarGridFilled: false, radarRadialLines: true,
+            radarDots: false, radarLinesOnly: false, radarMultiple: false, radarLegend: false, radarSetup: true
+          });
         }
 
         const chartData = [
-          { month: "January", desktop: 186, mobile: 80 },
-          { month: "February", desktop: 305, mobile: 200 },
-          { month: "March", desktop: 237, mobile: 120 },
-          { month: "April", desktop: 73, mobile: 190 },
-          { month: "May", desktop: 209, mobile: 130 },
-          { month: "June", desktop: 214, mobile: 140 },
+          { month: "January", desktop: 186, mobile: 80 }, { month: "February", desktop: 305, mobile: 200 },
+          { month: "March", desktop: 237, mobile: 120 }, { month: "April", desktop: 73, mobile: 190 },
+          { month: "May", desktop: 209, mobile: 130 }, { month: "June", desktop: 214, mobile: 140 },
         ];
-
         const chartConfig = {
-          desktop: { label: "Desktop", color: design.color.accent[3] },
-          mobile: { label: "Mobile", color: design.color.accent[4] }
+          desktop: { label: "Desktop", color: 'var(--series-1)' },
+          mobile: { label: "Mobile", color: 'var(--series-2)' }
         };
 
-        const Toggle = (label, checked, onclick) => div(
-          {
-            class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyBetween, design.size.wFull],
-            style: { justifyContent: 'space-between' }
-          },
+        const Toggle = (label, key) => div({ 'style-layout': 'row', 'style-justify': 'between', 'style-width': 'full' },
           Label(label),
-          Switch({ checked, onclick })
+          Switch({ checked: state[key], onChange: (checked) => { state[key] = checked; } })
         );
+        const fillOpacity = state.radarLinesOnly ? 0 : 0.6;
 
-        return Card({ style: { width: '100%', maxWidth: '800px' } },
-          CardHeader(
-            CardTitle('Radar Chart Explorer'),
-            CardDescription('Toggle properties to test all radar variations.')
-          ),
-          CardContent({ class: [design.layout.flex], style: { gap: '2rem', flexWrap: 'wrap' } },
-            div({ class: [design.layout.stack, design.spacing.gap3], style: { flex: '1', minWidth: '220px', borderRight: '1px solid var(--color-border-muted)', paddingRight: '2rem' } },
-              Toggle('Show Grid', state.radarGrid, (e) => { e.preventDefault(); state.radarGrid = !state.radarGrid; }),
-              Toggle('Grid Type: Circle', state.radarGridType === 'circle', (e) => { e.preventDefault(); state.radarGridType = state.radarGridType === 'circle' ? 'polygon' : 'circle'; }),
-              Toggle('Filled Grid', state.radarGridFilled, (e) => { e.preventDefault(); state.radarGridFilled = !state.radarGridFilled; }),
-              Toggle('Radial Lines', state.radarRadialLines, (e) => { e.preventDefault(); state.radarRadialLines = !state.radarRadialLines; }),
-              div({ style: { height: '1px', backgroundColor: 'var(--color-border-muted)', margin: '0.5rem 0' } }),
-              Toggle('Show Dots', state.radarDots, (e) => { e.preventDefault(); state.radarDots = !state.radarDots; }),
-              Toggle('Lines Only (No Fill)', state.radarLinesOnly, (e) => { e.preventDefault(); state.radarLinesOnly = !state.radarLinesOnly; }),
-              Toggle('Multiple Series', state.radarMultiple, (e) => { e.preventDefault(); state.radarMultiple = !state.radarMultiple; }),
-              Toggle('Show Legend', state.radarLegend, (e) => { e.preventDefault(); state.radarLegend = !state.radarLegend; })
+        return Card({ 'style-width': 'full', 'style-max-width': 'xlarge' },
+          CardHeader(CardTitle('Radar Chart Explorer'), CardDescription('Toggle properties to test all radar variations.')),
+          CardContent({ 'style-layout': 'cluster', 'style-align': 'stretch', 'style-gap': 'xlarge' },
+            div({ 'style-layout': 'stack', 'style-gap': 'small', 'style-flex': 'grow', 'style-divider': 'end', 'style-pad-inline': 'medium', style: { minWidth: '220px' } },
+              Toggle('Show Grid', 'radarGrid'),
+              div({ 'style-layout': 'row', 'style-justify': 'between', 'style-width': 'full' },
+                Label('Grid Type: Circle'),
+                Switch({ checked: state.radarGridType === 'circle', onChange: (checked) => { state.radarGridType = checked ? 'circle' : 'polygon'; } })
+              ),
+              Toggle('Filled Grid', 'radarGridFilled'),
+              Toggle('Radial Lines', 'radarRadialLines'),
+              Separator(),
+              Toggle('Show Dots', 'radarDots'),
+              Toggle('Lines Only (No Fill)', 'radarLinesOnly'),
+              Toggle('Multiple Series', 'radarMultiple'),
+              Toggle('Show Legend', 'radarLegend')
             ),
-            div({ style: { flex: '2', minWidth: '300px', display: 'flex', justifyContent: 'center', alignItems: 'center' } },
-              ChartContainer({ config: chartConfig, style: { height: '350px', width: '100%', maxWidth: '400px' } },
-                ChartRadar(
-                  { data: chartData, config: chartConfig, width: 400, height: 350 },
+            div({ 'style-layout': 'row', 'style-justify': 'center', 'style-flex': 'grow', style: { minWidth: '300px' } },
+              ChartContainer({ config: chartConfig, 'style-width': 'full', 'style-max-width': 'medium', style: { height: '350px' } },
+                ChartRadar({ data: chartData, config: chartConfig, width: 400, height: 350 },
                   ChartTooltip(),
-                  state.radarGrid ? PolarGrid({
+                  state.radarGrid && PolarGrid({
                     gridType: state.radarGridType,
                     filled: state.radarGridFilled,
-                    stroke: design.color.primary[4],
+                    stroke: 'var(--border)',
                     radialLines: state.radarRadialLines
-                  }) : null,
-                  PolarAngleAxis({ dataKey: 'month' }),
-                  Radar({
-                    dataKey: 'desktop',
-                    dot: state.radarDots,
-                    fillOpacity: state.radarLinesOnly ? 0 : 0.6
                   }),
-                  state.radarMultiple ? Radar({
-                    dataKey: 'mobile',
-                    dot: state.radarDots,
-                    fillOpacity: state.radarLinesOnly ? 0 : 0.6
-                  }) : null,
-                  state.radarLegend ? ChartLegend() : null
+                  PolarAngleAxis({ dataKey: 'month' }),
+                  Radar({ dataKey: 'desktop', dot: state.radarDots, fillOpacity }),
+                  state.radarMultiple && Radar({ dataKey: 'mobile', dot: state.radarDots, fillOpacity }),
+                  state.radarLegend && ChartLegend()
                 )
               )
             )
@@ -599,180 +390,156 @@ export const COMPONENTS = [
         );
       },
 
-      /**
-       * Radial Chart - Standard
-       */
       function RadialChartStandard(state) {
         const data = [
-          { browser: "Chrome", visitors: 275, fill: design.color.accent[4] },
-          { browser: "Safari", visitors: 200, fill: design.color.accent[3] },
-          { browser: "Firefox", visitors: 187, fill: design.color.accent[2] },
-          { browser: "Edge", visitors: 173, fill: design.color.accent[1] },
-          { browser: "Other", visitors: 90, fill: design.color.neutral[3] },
+          { browser: "Chrome", visitors: 275, fill: 'var(--series-1)' },
+          { browser: "Safari", visitors: 200, fill: 'var(--series-2)' },
+          { browser: "Firefox", visitors: 187, fill: 'var(--series-3)' },
+          { browser: "Edge", visitors: 173, fill: 'var(--series-4)' },
+          { browser: "Other", visitors: 90, fill: 'var(--series-5)' },
         ];
 
-        return Card({ style: { width: '100%', maxWidth: '400px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'medium' },
           CardHeader(CardTitle('Radial Chart'), CardDescription('January - June 2024')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
             ChartContainer({ config: { visitors: { label: "Visitors" } }, style: { height: '300px', width: '300px' } },
-              ChartRadial(
-                { data, width: 300, height: 300, innerRadius: '30%', outerRadius: '90%' },
+              ChartRadial({ data, width: 300, height: 300, innerRadius: '30%', outerRadius: '90%' },
                 ChartTooltip(),
                 RadialBar({ dataKey: 'visitors', nameKey: 'browser' })
               )
             )
           ),
-          CardFooter({ class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.layout.stack, design.spacing.gap2, design.typography.size1] },
-            div({ class: [design.typography.weightMedium, design.layout.flex, design.spacing.gap2] }, "Trending up by 5.2% this month ↗"),
-            div({ class: design.fg.fgMuted }, "Showing total visitors for the last 6 months")
+          CardFooter({ 'style-layout': 'stack', 'style-align': 'center', 'style-gap': 'small', 'style-text': 'small' },
+            div({ 'style-weight': 'medium' }, "Trending up by 5.2% this month ↗"),
+            div({ 'style-tone': 'muted' }, "Showing total visitors for the last 6 months")
           )
         );
       },
 
-      /**
-       * Radial Chart - Label
-       */
       function RadialChartLabel(state) {
         const data = [
-          { browser: "Chrome", visitors: 275, fill: design.color.accent[4] },
-          { browser: "Safari", visitors: 200, fill: design.color.accent[3] },
-          { browser: "Firefox", visitors: 187, fill: design.color.accent[2] },
-          { browser: "Edge", visitors: 173, fill: design.color.accent[1] },
-          { browser: "Other", visitors: 90, fill: design.color.neutral[3] },
+          { browser: "Chrome", visitors: 275, fill: 'var(--series-1)' },
+          { browser: "Safari", visitors: 200, fill: 'var(--series-2)' },
+          { browser: "Firefox", visitors: 187, fill: 'var(--series-3)' },
+          { browser: "Edge", visitors: 173, fill: 'var(--series-4)' },
+          { browser: "Other", visitors: 90, fill: 'var(--series-5)' },
         ];
 
-        return Card({ style: { width: '100%', maxWidth: '400px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'medium' },
           CardHeader(CardTitle('Radial Chart - Label'), CardDescription('January - June 2024')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
             ChartContainer({ config: { visitors: { label: "Visitors" } }, style: { height: '300px', width: '300px' } },
-              ChartRadial(
-                { data, width: 300, height: 300, innerRadius: '30%', outerRadius: '90%' },
+              ChartRadial({ data, width: 300, height: 300, innerRadius: '30%', outerRadius: '90%' },
                 ChartTooltip(),
                 RadialBar({ dataKey: 'visitors', nameKey: 'browser', label: true })
               )
             )
           ),
-          CardFooter({ class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.layout.stack, design.spacing.gap2, design.typography.size1] },
-            div({ class: [design.typography.weightMedium, design.layout.flex, design.spacing.gap2] }, "Trending up by 5.2% this month ↗"),
-            div({ class: design.fg.fgMuted }, "Showing total visitors for the last 6 months")
+          CardFooter({ 'style-layout': 'stack', 'style-align': 'center', 'style-gap': 'small', 'style-text': 'small' },
+            div({ 'style-weight': 'medium' }, "Trending up by 5.2% this month ↗"),
+            div({ 'style-tone': 'muted' }, "Showing total visitors for the last 6 months")
           )
         );
       },
 
-      /**
-       * Radial Chart - Grid
-       */
       function RadialChartGrid(state) {
         const data = [
-          { browser: "Chrome", visitors: 275, fill: design.color.accent[4] },
-          { browser: "Safari", visitors: 200, fill: design.color.accent[3] },
-          { browser: "Firefox", visitors: 187, fill: design.color.accent[2] },
+          { browser: "Chrome", visitors: 275, fill: 'var(--series-1)' },
+          { browser: "Safari", visitors: 200, fill: 'var(--series-2)' },
+          { browser: "Firefox", visitors: 187, fill: 'var(--series-3)' },
         ];
 
-        return Card({ style: { width: '100%', maxWidth: '400px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'medium' },
           CardHeader(CardTitle('Radial Chart - Grid'), CardDescription('January - June 2024')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
             ChartContainer({ config: { visitors: { label: "Visitors" } }, style: { height: '300px', width: '300px' } },
-              ChartRadial(
-                { data, width: 300, height: 300, innerRadius: '30%', outerRadius: '90%' },
+              ChartRadial({ data, width: 300, height: 300, innerRadius: '30%', outerRadius: '90%' },
                 PolarGrid({ gridLines: 12 }),
                 ChartTooltip(),
                 RadialBar({ dataKey: 'visitors', nameKey: 'browser' })
               )
             )
           ),
-          CardFooter({ class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.layout.stack, design.spacing.gap2, design.typography.size1] },
-            div({ class: [design.typography.weightMedium, design.layout.flex, design.spacing.gap2] }, "Trending up by 5.2% this month ↗"),
-            div({ class: design.fg.fgMuted }, "Showing total visitors for the last 6 months")
+          CardFooter({ 'style-layout': 'stack', 'style-align': 'center', 'style-gap': 'small', 'style-text': 'small' },
+            div({ 'style-weight': 'medium' }, "Trending up by 5.2% this month ↗"),
+            div({ 'style-tone': 'muted' }, "Showing total visitors for the last 6 months")
           )
         );
       },
 
-      /**
-       * Radial Chart - Text Overlay
-       */
       function RadialChartText(state) {
-        const data = [{ browser: "Safari", visitors: 200, fill: design.color.accent[3] }];
+        const data = [{ browser: "Safari", visitors: 200, fill: 'var(--series-1)' }];
 
-        return Card({ style: { width: '100%', maxWidth: '400px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'medium' },
           CardHeader(CardTitle('Radial Chart - Text'), CardDescription('January - June 2024')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
-            ChartContainer({ config: { visitors: { label: "Visitors" } }, style: { height: '300px', width: '300px', position: 'relative' } },
-              ChartRadial(
-                { data, max: 250, width: 300, height: 300, innerRadius: '70%', outerRadius: '80%' },
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
+            ChartContainer({ config: { visitors: { label: "Visitors" } }, 'style-position': 'relative', style: { height: '300px', width: '300px' } },
+              ChartRadial({ data, max: 250, width: 300, height: 300, innerRadius: '70%', outerRadius: '80%' },
                 ChartTooltip(),
                 RadialBar({ dataKey: 'visitors', nameKey: 'browser' })
               ),
-              div({ class: [design.layout.absolute], style: { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' } },
-                div({ class: [design.typography.weightBold], style: { fontSize: '3rem', lineHeight: '1.1' } }, "200"),
-                div({ class: [design.fg.fgMuted, design.typography.size1] }, "Visitors")
+              div({ 'style-position': 'absolute', 'style-inset': 'fill', 'style-layout': 'stack', 'style-justify': 'center', 'style-align': 'center', 'style-interactive': 'inert' },
+                div({ 'style-weight': 'bold', 'style-text': 'xxlarge', 'style-leading': 'tight' }, "200"),
+                div({ 'style-tone': 'muted', 'style-text': 'small' }, "Visitors")
               )
             )
           ),
-          CardFooter({ class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.layout.stack, design.spacing.gap2, design.typography.size1] },
-            div({ class: [design.typography.weightMedium, design.layout.flex, design.spacing.gap2] }, "Trending up by 5.2% this month ↗"),
-            div({ class: design.fg.fgMuted }, "Showing total visitors for the last 6 months")
+          CardFooter({ 'style-layout': 'stack', 'style-align': 'center', 'style-gap': 'small', 'style-text': 'small' },
+            div({ 'style-weight': 'medium' }, "Trending up by 5.2% this month ↗"),
+            div({ 'style-tone': 'muted' }, "Showing total visitors for the last 6 months")
           )
         );
       },
 
-      /**
-       * Radial Chart - Shape (Semi-circle)
-       */
+      // Semi-circle: 270° (left) to 450° (right), sweeping over the top.
       function RadialChartShape(state) {
-        const data = [{ browser: "Safari", visitors: 1260, fill: design.color.accent[3] }];
+        const data = [{ browser: "Safari", visitors: 1260, fill: 'var(--series-1)' }];
 
-        return Card({ style: { width: '100%', maxWidth: '400px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'medium' },
           CardHeader(CardTitle('Radial Chart - Shape'), CardDescription('January - June 2024')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
-            ChartContainer({ config: { visitors: { label: "Visitors" } }, style: { height: '220px', width: '300px', position: 'relative' } },
-              // start 270 (Left) to 450 (Right) = 180 deg semi circle sweeping over Top
-              ChartRadial(
-                { data, max: 2000, width: 300, height: 250, startAngle: 270, endAngle: 450, innerRadius: '70%', outerRadius: '85%' },
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
+            ChartContainer({ config: { visitors: { label: "Visitors" } }, 'style-position': 'relative', style: { height: '220px', width: '300px' } },
+              ChartRadial({ data, max: 2000, width: 300, height: 250, startAngle: 270, endAngle: 450, innerRadius: '70%', outerRadius: '85%' },
                 ChartTooltip(),
                 RadialBar({ dataKey: 'visitors', nameKey: 'browser' })
               ),
-              div({ class: [design.layout.absolute], style: { top: '65%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' } },
-                div({ class: [design.typography.weightBold], style: { fontSize: '2.5rem', lineHeight: '1.1' } }, "1,260"),
-                div({ class: [design.fg.fgMuted, design.typography.size1] }, "Visitors")
+              div({ 'style-position': 'absolute', 'style-inset': 'fill', 'style-layout': 'stack', 'style-justify': 'end', 'style-align': 'center', 'style-pad-block': 'xxlarge', 'style-interactive': 'inert' },
+                div({ 'style-weight': 'bold', 'style-text': 'xxlarge', 'style-leading': 'tight' }, "1,260"),
+                div({ 'style-tone': 'muted', 'style-text': 'small' }, "Visitors")
               )
             )
           ),
-          CardFooter({ class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.layout.stack, design.spacing.gap2, design.typography.size1] },
-            div({ class: [design.typography.weightMedium, design.layout.flex, design.spacing.gap2] }, "Trending up by 5.2% this month ↗"),
-            div({ class: design.fg.fgMuted }, "Showing total visitors for the last 6 months")
+          CardFooter({ 'style-layout': 'stack', 'style-align': 'center', 'style-gap': 'small', 'style-text': 'small' },
+            div({ 'style-weight': 'medium' }, "Trending up by 5.2% this month ↗"),
+            div({ 'style-tone': 'muted' }, "Showing total visitors for the last 6 months")
           )
         );
       },
 
-      /**
-       * Radial Chart - Stacked
-       */
       function RadialChartStacked(state) {
         const data = [
-          { segment: "Mobile", visitors: 800, fill: design.color.accent[4] },
-          { segment: "Desktop", visitors: 600, fill: design.color.accent[3] },
-          { segment: "Tablet", visitors: 430, fill: design.color.accent[2] }
+          { segment: "Mobile", visitors: 800, fill: 'var(--series-1)' },
+          { segment: "Desktop", visitors: 600, fill: 'var(--series-2)' },
+          { segment: "Tablet", visitors: 430, fill: 'var(--series-3)' }
         ];
 
-        return Card({ style: { width: '100%', maxWidth: '400px' } },
+        return Card({ 'style-width': 'full', 'style-max-width': 'medium' },
           CardHeader(CardTitle('Radial Chart - Stacked'), CardDescription('January - June 2024')),
-          CardContent({ class: [design.layout.flex, design.layout.justifyCenter] },
-            ChartContainer({ config: { visitors: { label: "Visitors" } }, style: { height: '220px', width: '300px', position: 'relative' } },
-              ChartRadial(
-                { data, stacked: true, width: 300, height: 250, startAngle: 270, endAngle: 450, innerRadius: '65%', outerRadius: '85%' },
+          CardContent({ 'style-layout': 'row', 'style-justify': 'center' },
+            ChartContainer({ config: { visitors: { label: "Visitors" } }, 'style-position': 'relative', style: { height: '220px', width: '300px' } },
+              ChartRadial({ data, stacked: true, width: 300, height: 250, startAngle: 270, endAngle: 450, innerRadius: '65%', outerRadius: '85%' },
                 ChartTooltip(),
                 RadialBar({ dataKey: 'visitors', nameKey: 'segment' })
               ),
-              div({ class: [design.layout.absolute], style: { top: '65%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center', pointerEvents: 'none' } },
-                div({ class: [design.typography.weightBold], style: { fontSize: '2.25rem', lineHeight: '1.1' } }, "1,830"),
-                div({ class: [design.fg.fgMuted, design.typography.size1] }, "Visitors")
+              div({ 'style-position': 'absolute', 'style-inset': 'fill', 'style-layout': 'stack', 'style-justify': 'end', 'style-align': 'center', 'style-pad-block': 'xxlarge', 'style-interactive': 'inert' },
+                div({ 'style-weight': 'bold', 'style-text': 'xxlarge', 'style-leading': 'tight' }, "1,830"),
+                div({ 'style-tone': 'muted', 'style-text': 'small' }, "Visitors")
               )
             )
           ),
-          CardFooter({ class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.layout.stack, design.spacing.gap2, design.typography.size1] },
-            div({ class: [design.typography.weightMedium, design.layout.flex, design.spacing.gap2] }, "Trending up by 5.2% this month ↗"),
-            div({ class: design.fg.fgMuted }, "Showing total visitors for the last 6 months")
+          CardFooter({ 'style-layout': 'stack', 'style-align': 'center', 'style-gap': 'small', 'style-text': 'small' },
+            div({ 'style-weight': 'medium' }, "Trending up by 5.2% this month ↗"),
+            div({ 'style-tone': 'muted' }, "Showing total visitors for the last 6 months")
           )
         );
       }
@@ -788,110 +555,71 @@ export const COMPONENTS = [
     a11y: "Pointer event management for touch/mouse drag surfaces, dialog focus trapping.",
     state: "Controlled via awaitable open(initialColor) API, internal HSV/RGBA state.",
     exports: [ColorPicker],
-render: [
+    render: [
       function BasicUsage() {
         const picker = ColorPicker({});
 
         const handlePick = async (e) => {
-          // Look specifically for the element marked with our data attribute
-          const demoRow = e.target.closest('[data-demo-row]');
-          if (!demoRow) return;
-
-          const swatch = demoRow.querySelector('.color-swatch');
-          const textSpan = demoRow.querySelector('.color-text');
-
-          const result = await picker.open(textSpan.textContent);
-
-          if (result) {
-            swatch.style.backgroundColor = result;
-            textSpan.textContent = result;
-          }
+          const row = e.target.closest('[data-demo-row]');
+          const swatch = row.querySelector('.color-swatch');
+          const label = row.querySelector('.color-text');
+          const result = await picker.open(label.textContent);
+          if (result) { swatch.style.backgroundColor = result; label.textContent = result; }
         };
 
-        return div(
-          { 'data-demo-row': true, class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap4], style: { padding: '40px 20px' } },
-          Button(
-            {
-              onclick: handlePick,
-              class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction, design.layout.flex, design.layout.itemsCenter],
-              style: { padding: '0.5rem 1rem', gap: '8px', cursor: 'pointer' }
-            },
-            div({ class: 'color-swatch', style: { width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#4F46E5', border: '1px solid rgba(255,255,255,0.2)' } }),
+        return div({ 'data-demo-row': true, 'style-layout': 'row', 'style-gap': 'medium', 'style-pad-block': 'xlarge', 'style-pad-inline': 'medium' },
+          Button({ onclick: handlePick },
+            div({ class: 'color-swatch', 'style-size': 'xsmall', 'style-radius': 'round', 'style-border': 'thin', style: { backgroundColor: '#4F46E5' } }),
             'Pick Color'
           ),
-          span({ class: ['color-text', design.typography.fontMono, design.typography.size1, design.fg.fgMuted] }, '#4F46E5'),
+          span({ class: 'color-text', 'style-font': 'mono', 'style-text': 'small', 'style-tone': 'muted' }, '#4F46E5'),
           picker
         );
       },
+
       function AlphaTransparency() {
         const picker = ColorPicker({});
-
-        const handlePick = async (e) => {
-          const demoRow = e.target.closest('[data-demo-row]');
-          if (!demoRow) return;
-
-          const swatch = demoRow.querySelector('.color-swatch');
-          const textSpan = demoRow.querySelector('.color-text');
-
-          const result = await picker.open(textSpan.textContent);
-
-          if (result) {
-            swatch.style.backgroundColor = result;
-            textSpan.textContent = result;
-          }
-        };
-
         const checkerboard = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8"><path fill="%23e5e7eb" d="M0 0h4v4H0zm4 4h4v4H4z"/></svg>')`;
 
-        return div(
-          { 'data-demo-row': true, class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap4], style: { padding: '40px 20px' } },
-          Button(
-            {
-              onclick: handlePick,
-              class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction, design.layout.flex, design.layout.itemsCenter],
-              style: { padding: '0.5rem 1rem', gap: '8px', cursor: 'pointer' }
-            },
-            div(
-              { style: { width: '16px', height: '16px', borderRadius: '50%', backgroundImage: checkerboard } },
-              div({ class: 'color-swatch', style: { width: '100%', height: '100%', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.5)' } })
+        const handlePick = async (e) => {
+          const row = e.target.closest('[data-demo-row]');
+          const swatch = row.querySelector('.color-swatch');
+          const label = row.querySelector('.color-text');
+          const result = await picker.open(label.textContent);
+          if (result) { swatch.style.backgroundColor = result; label.textContent = result; }
+        };
+
+        return div({ 'data-demo-row': true, 'style-layout': 'row', 'style-gap': 'medium', 'style-pad-block': 'xlarge', 'style-pad-inline': 'medium' },
+          Button({ onclick: handlePick },
+            div({ 'style-size': 'xsmall', 'style-radius': 'round', style: { backgroundImage: checkerboard } },
+              div({ class: 'color-swatch', 'style-width': 'full', 'style-height': 'full', 'style-radius': 'round', style: { backgroundColor: 'rgba(239, 68, 68, 0.5)' } })
             ),
             'Pick with Alpha'
           ),
-          span({ class: ['color-text', design.typography.fontMono, design.typography.size1, design.fg.fgMuted] }, 'rgba(239, 68, 68, 0.5)'),
+          span({ class: 'color-text', 'style-font': 'mono', 'style-text': 'small', 'style-tone': 'muted' }, 'rgba(239, 68, 68, 0.5)'),
           picker
         );
       },
+
       function CustomBackdrop() {
         const picker = ColorPicker({
-          style: { backgroundColor: 'rgba(16, 185, 129, 0.1)', backdropFilter: 'blur(8px)' }
+          style: { backgroundColor: 'color-mix(in oklch, var(--success) 10%, transparent)', backdropFilter: 'blur(8px)' }
         });
 
         const handlePick = async (e) => {
-          const demoRow = e.target.closest('[data-demo-row]');
-          if (!demoRow) return;
-
-          const swatch = demoRow.querySelector('.color-swatch');
-          const textSpan = demoRow.querySelector('.color-text');
-
-          const result = await picker.open(textSpan.textContent);
-          if (result) {
-            swatch.style.backgroundColor = result;
-            textSpan.textContent = result;
-          }
+          const row = e.target.closest('[data-demo-row]');
+          const swatch = row.querySelector('.color-swatch');
+          const label = row.querySelector('.color-text');
+          const result = await picker.open(label.textContent);
+          if (result) { swatch.style.backgroundColor = result; label.textContent = result; }
         };
 
-        return div(
-          { 'data-demo-row': true, class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap4], style: { padding: '40px 20px' } },
-          Button(
-            {
-              onclick: handlePick,
-              class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction, design.layout.flex, design.layout.itemsCenter],
-              style: { padding: '0.5rem 1rem', gap: '8px', cursor: 'pointer' }
-            },
-            div({ class: 'color-swatch', style: { width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#10B981', border: '1px solid rgba(255,255,255,0.2)' } }),
+        return div({ 'data-demo-row': true, 'style-layout': 'row', 'style-gap': 'medium', 'style-pad-block': 'xlarge', 'style-pad-inline': 'medium' },
+          Button({ onclick: handlePick },
+            div({ class: 'color-swatch', 'style-size': 'xsmall', 'style-radius': 'round', 'style-border': 'thin', style: { backgroundColor: '#10B981' } }),
             'Custom Backdrop Filter'
           ),
-          span({ class: ['color-text', design.typography.fontMono, design.typography.size1, design.fg.fgMuted], style: { display: 'none'} }, '#10B981'),
+          span({ class: 'color-text', hidden: true }, '#10B981'),
           picker
         );
       }
@@ -909,49 +637,32 @@ render: [
     exports: [Input, InputGroup, InputLeftAddon, InputRightAddon, Label, Textarea],
     render: [
       function StandardInputs(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          div(
-            { class: [design.layout.stack, design.spacing.gap2] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium' },
+          div({ 'style-layout': 'stack', 'style-gap': 'small' },
             Label('Email'),
             Input({ id: 'demo-email-input', type: 'email', placeholder: 'Enter your email' })
           ),
-          div(
-            { class: [design.layout.stack, design.spacing.gap2] },
+          div({ 'style-layout': 'stack', 'style-gap': 'small' },
             Label('Password'),
-            Input({ id: 'demo-password-input', type: 'password', placeholder: 'Enter password', invalid: true })
+            Input({ id: 'demo-password-input', type: 'password', placeholder: 'Enter password', errorMessage: 'Password must be at least 8 characters' })
           )
         );
       },
+
       function InputGroups(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          div(
-            { class: [design.layout.stack, design.spacing.gap2] },
-            Label('Search'),
-            InputGroup({ id: 'demo-search-group' },
-              span({
-                class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.fg.fgMuted],
-                style: { paddingLeft: '0.75rem', paddingRight: '0.25rem', flexShrink: 0 }
-              }, '🔍'),
-              Input({
-                id: 'demo-search-input',
-                variant: 'ghost',
-                placeholder: 'Search...',
-                style: { paddingLeft: '0.25rem' }
-              })
-            )
+        return div({ 'style-layout': 'stack', 'style-gap': 'small', 'style-width': 'full', 'style-max-width': 'medium' },
+          Label('Search'),
+          InputGroup({ id: 'demo-search-group' },
+            span({ 'style-layout': 'row', 'style-tone': 'muted', 'style-pad-inline': 'small', 'style-flex': 'none' }, '🔍'),
+            Input({ id: 'demo-search-input', variant: 'ghost', placeholder: 'Search...', 'style-pad-inline': 'xsmall' })
           )
         );
       },
+
       function Textareas(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          div(
-            { class: [design.layout.stack, design.spacing.gap2] },
-            Label('Message'),
-            Textarea({ id: 'demo-message-textarea', placeholder: 'Enter your message', rows: 4 })
-          )
+        return div({ 'style-layout': 'stack', 'style-gap': 'small', 'style-width': 'full', 'style-max-width': 'medium' },
+          Label('Message'),
+          Textarea({ id: 'demo-message-textarea', placeholder: 'Enter your message', rows: 4 })
         );
       }
     ]
@@ -969,29 +680,15 @@ render: [
     render: function CheckboxExample(state) {
       if (state.agreed === undefined) state.agreed = true;
 
-      return div(
+      return Checkbox(
         {
-          class: [
-            design.layout.inlineFlex,
-            design.layout.itemsCenter,
-            design.spacing.gap2,
-            design.interaction.selectNone
-          ]
+          id: 'terms',
+          name: 'terms',
+          checked: state.agreed,
+          required: true,
+          onChange: (isChecked) => { state.agreed = isChecked; }
         },
-        Checkbox(
-          {
-            id: 'terms',
-            name: 'terms',
-            checked: state.agreed,
-            required: true,
-            onChange: (isChecked) => {
-              state.agreed = isChecked;
-            }
-          },
-          Label(
-            `Accept terms and conditions (${state.agreed ? 'Accepted' : 'Pending'})`
-          )
-        )
+        Label(`Accept terms and conditions (${state.agreed ? 'Accepted' : 'Pending'})`)
       );
     }
   }),
@@ -1008,23 +705,17 @@ render: [
     render: function SwitchExample(state) {
       if (state.notifications === undefined) state.notifications = true;
 
-      return div(
-        {
-          class: [
-            design.layout.inlineFlex,
-            design.layout.itemsCenter,
-            design.spacing.gap2,
-            design.interaction.selectNone
-          ]
-        },
+      // the switch also fires a bubbling `change` event (detail.checked), so a parent can listen
+      return div({ onchange: (e) => { if (e.detail) state.lastChange = e.detail.checked ? 'on' : 'off'; } },
         Switch(
           {
             id: 'notifications',
             checked: state.notifications,
-            onclick: e => { state.notifications = !state.notifications; }
+            onChange: (checked) => { state.notifications = checked; }
           },
           Label(`Enable notifications: ${state.notifications ? 'ON' : 'OFF'}`)
-        )
+        ),
+        state.lastChange && span({ 'style-text': 'small', 'style-tone': 'muted' }, `Last change event: ${state.lastChange}`)
       );
     }
   }),
@@ -1039,10 +730,9 @@ render: [
     state: "Stateless",
     exports: [Text],
     render: function TextExample(state) {
-      return div(
-        { class: design.layout.stack, style: { gap: 0, margin: '10%' } },
-        Text({ as: 'h3', size: 'xl', weight: 'bold', leading: 'tight' }, 'Typography Primitive'),
-        Text({ as: 'p', size: 'sm', color: 'secondary', wrap: 'pretty' }, 'This component handles all typography routing without writing custom CSS classes. It delegates rendering to the exact HTML tag requested.')
+      return div({ 'style-layout': 'stack' },
+        Text({ as: 'h3', size: 'xlarge', weight: 'bold', leading: 'tight' }, 'Typography Primitive'),
+        Text({ as: 'p', size: 'small', color: 'muted', wrap: 'pretty' }, 'This component handles all typography routing without writing custom CSS classes. It delegates rendering to the exact HTML tag requested.')
       );
     }
   }),
@@ -1058,61 +748,26 @@ render: [
     exports: [Tooltip],
     render: [
       function Placements(state) {
-        return div(
-          { class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.spacing.gap6], style: { padding: '60px 20px' } },
-          Tooltip({ id: 'demo-tt-top', content: 'Top tooltip', position: 'top' },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'Top')
-          ),
-          Tooltip({ id: 'demo-tt-bottom', content: 'Bottom tooltip', position: 'bottom' },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'Bottom')
-          ),
-          Tooltip({ id: 'demo-tt-left', content: 'Left tooltip', position: 'left' },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'Left')
-          ),
-          Tooltip({ id: 'demo-tt-right', content: 'Right tooltip', position: 'right' },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'Right')
-          )
+        return div({ 'style-layout': 'row', 'style-justify': 'center', 'style-gap': 'xlarge', 'style-pad-block': 'xxlarge', 'style-pad-inline': 'medium' },
+          Tooltip({ id: 'demo-tt-top', content: 'Top tooltip', position: 'top' }, Button('Top')),
+          Tooltip({ id: 'demo-tt-bottom', content: 'Bottom tooltip', position: 'bottom' }, Button('Bottom')),
+          Tooltip({ id: 'demo-tt-left', content: 'Left tooltip', position: 'left' }, Button('Left')),
+          Tooltip({ id: 'demo-tt-right', content: 'Right tooltip', position: 'right' }, Button('Right'))
         );
       },
+
       function CustomConfigurations(state) {
-        return div(
-          { class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap6], style: { padding: '40px 20px' } },
-          Tooltip({
-            id: 'demo-tt-instant',
-            content: 'I appear instantly!',
-            delay: 0,
-            offset: 16
-          },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'Instant & Offset')
-          ),
-          Tooltip({
-            id: 'demo-tt-thick',
-            content: 'Lots of breathing room',
-            padding: '1rem 1.5rem',
-            position: 'bottom'
-          },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'Custom Padding')
-          )
+        return div({ 'style-layout': 'row', 'style-gap': 'xlarge', 'style-pad-block': 'xlarge', 'style-pad-inline': 'medium' },
+          Tooltip({ id: 'demo-tt-instant', content: 'I appear instantly!', delay: 0, offset: 16 }, Button('Instant & Offset')),
+          Tooltip({ id: 'demo-tt-thick', content: 'Lots of breathing room', pad: 'medium', position: 'bottom' }, Button('Custom Padding')),
+          Tooltip({ id: 'demo-tt-error', content: 'This field is required', forceOpen: true, variant: 'danger', position: 'bottom' }, Button({ variant: 'outline' }, 'Always open (danger)'))
         );
       },
+
       function EdgeCases(state) {
-        return div(
-          { class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap6], style: { padding: '40px 20px' } },
-          Tooltip({
-            id: 'demo-tt-rtl',
-            content: 'عربى (RTL)',
-            dir: 'rtl',
-            position: 'left'
-          },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgAction, design.fg.fgAction], style: { padding: '0.5rem 1rem' } }, 'RTL Auto-Flip (Left to Right)')
-          ),
-          Tooltip({
-            id: 'demo-tt-disabled',
-            content: 'You will never see this',
-            disabled: true
-          },
-            button({ class: [design.typography.size1, design.shape.radius1, design.bg.bgMuted, design.fg.fgMuted], style: { padding: '0.5rem 1rem', cursor: 'not-allowed' }, disabled: true }, 'Disabled Tooltip')
-          )
+        return div({ 'style-layout': 'row', 'style-gap': 'xlarge', 'style-pad-block': 'xlarge', 'style-pad-inline': 'medium' },
+          Tooltip({ id: 'demo-tt-rtl', content: 'عربى (RTL)', dir: 'rtl', position: 'left' }, Button('RTL Auto-Flip (Left to Right)')),
+          Tooltip({ id: 'demo-tt-disabled', content: 'You will never see this', disabled: true }, Button({ disabled: true }, 'Disabled Tooltip'))
         );
       }
     ]
@@ -1128,76 +783,52 @@ render: [
     a11y: 'role="combobox" trigger with aria-expanded and listbox content',
     state: 'Stateful selected value and open state',
     render: [
-      /**
-       * Variation 1: Item-Aligned (Shadcn style)
-       */
+      // The open list aligns the selected item over the trigger.
       function DropdownItemAligned(state) {
         if (state.alignedValue === undefined) state.alignedValue = 'giant';
 
-        return div(
-          {
-            style: { padding: '2rem', minHeight: '280px', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }
-          },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-align': 'center', 'style-pad': 'xlarge', style: { minHeight: '280px' } },
           Label('Item-Aligned (Shadcn-style)'),
           Dropdown(
             {
               name: 'framework_aligned',
               value: state.alignedValue,
               onValueChange: (value) => { state.alignedValue = value; },
-              style: { width: '240px' }
+              'style-width': 'small'
             },
             Dropdown.Label('Frameworks'),
-            Dropdown.Item({ value: 'giant' }, Dropdown.ItemText('Giant')),
-            Dropdown.Item({ value: 'react' }, Dropdown.ItemText('React')),
-            Dropdown.Item({ value: 'vue' }, Dropdown.ItemText('Vue')),
-            Dropdown.Item({ value: 'svelte' }, Dropdown.ItemText('Svelte')),
+            Dropdown.Item({ value: 'giant' }, 'Giant'),
+            Dropdown.Item({ value: 'react' }, 'React'),
+            Dropdown.Item({ value: 'vue' }, 'Vue'),
+            Dropdown.Item({ value: 'svelte' }, 'Svelte'),
             Dropdown.Separator(),
             Dropdown.Group(
               Dropdown.Label('Meta'),
-              Dropdown.Item({ value: 'vanilla' }, Dropdown.ItemText('Vanilla JS'))
+              Dropdown.Item({ value: 'vanilla' }, 'Vanilla JS')
             )
           )
         );
       },
 
-      /**
-       * Variation 2: Traditional (Always below trigger)
-       */
-      function DropdownTraditional(state) {
-        if (state.traditionalValue === undefined) state.traditionalValue = 'apple';
-
-        return div(
-          {
-            style: { padding: '2rem', minHeight: '280px', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }
-          },
-          Label('Traditional (Popper below trigger)'),
-          Dropdown(
-            {
-              name: 'fruit_traditional',
-              value: state.traditionalValue,
-              position: 'popper', // Bypasses the alignment math!
-              onValueChange: (value) => { state.traditionalValue = value; },
-              style: { width: '240px' }
-            },
-            Dropdown.Label('Fruits'),
-            Dropdown.Item({ value: 'apple' }, Dropdown.ItemText('Apple')),
-            Dropdown.Item({ value: 'banana' }, Dropdown.ItemText('Banana')),
-            Dropdown.Item({ value: 'orange' }, Dropdown.ItemText('Orange')),
-            Dropdown.Item({ value: 'grape' }, Dropdown.ItemText('Grape'))
+      // ghost and lg variants; invalid gives the danger tone
+      function DropdownVariants(state) {
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-align': 'center', 'style-pad': 'xlarge', style: { minHeight: '280px' } },
+          Label('Ghost, large and invalid'),
+          Dropdown({ name: 'fruit_ghost', variant: 'ghost', size: 'lg', value: 'apple', 'style-width': 'small' },
+            Dropdown.Item({ value: 'apple' }, 'Apple'),
+            Dropdown.Item({ value: 'banana' }, 'Banana')
+          ),
+          Dropdown({ name: 'fruit_invalid', invalid: true, 'style-width': 'small' },
+            Dropdown.Item({ value: 'apple' }, 'Apple'),
+            Dropdown.Item({ value: 'banana' }, 'Banana')
           )
         );
       },
 
-      /**
-       * Variation 3: Multi-Select
-       */
       function DropdownMultiSelect(state) {
         if (state.multiValue === undefined) state.multiValue = ['giant', 'svelte'];
 
-        return div(
-          {
-            style: { padding: '2rem', minHeight: '280px', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }
-          },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-align': 'center', 'style-pad': 'xlarge', style: { minHeight: '280px' } },
           Label(`Multi-Select: ${state.multiValue.join(', ') || 'None'}`),
           Dropdown(
             {
@@ -1205,13 +836,13 @@ render: [
               multiple: true,
               value: state.multiValue,
               onValueChange: (value) => { state.multiValue = value; },
-              style: { width: '240px' }
+              'style-width': 'small'
             },
             Dropdown.Label('Frameworks'),
-            Dropdown.Item({ value: 'giant' }, Dropdown.ItemText('Giant')),
-            Dropdown.Item({ value: 'react' }, Dropdown.ItemText('React')),
-            Dropdown.Item({ value: 'vue' }, Dropdown.ItemText('Vue')),
-            Dropdown.Item({ value: 'svelte' }, Dropdown.ItemText('Svelte'))
+            Dropdown.Item({ value: 'giant' }, 'Giant'),
+            Dropdown.Item({ value: 'react' }, 'React'),
+            Dropdown.Item({ value: 'vue' }, 'Vue'),
+            Dropdown.Item({ value: 'svelte' }, 'Svelte')
           )
         );
       }
@@ -1223,68 +854,45 @@ render: [
     title: 'Menu',
     description: 'A composable suite of dropdown and context menus with flawless flexbox alignment and tactile physics.',
     filepath: './menu/menu.js',
-    imports: "{ Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, MenuShortcut, MenuSub, MenuSubTrigger, MenuSubContent, MenuCheckboxItem, MenuRadioGroup, MenuRadioItem } from './menu/menu.js'",
-    exports: [Menu, MenuTrigger, MenuContent, MenuItem, MenuSeparator, MenuShortcut, MenuSub, MenuSubTrigger, MenuSubContent, MenuCheckboxItem, MenuRadioGroup, MenuRadioItem],
+    imports: "{ Menu } from './menu/menu.js'",
+    exports: [Menu],
     render: function MenuExample(state) {
-      if (state.editMenuOpen === undefined) state.editMenuOpen = true;
       if (state.showRuler === undefined) state.showRuler = true;
       if (state.activeProfile === undefined) state.activeProfile = 'work';
 
-      return div({ style: { padding: '2rem', minHeight: '450px', display: 'flex', justifyContent: 'center' } },
-        Menu({ style: { zIndex: 'var(--layout-z-overlay)' } },
-
-          MenuTrigger({
-            class: [design.layout.inlineFlex, design.layout.itemsCenter, design.shape.radius1, design.shape.border1, design.bg.surface],
-            style: { padding: '0.5rem 1rem', cursor: 'pointer', border: '1px solid var(--color-border-muted)' },
-            onclick: () => { state.editMenuOpen = !state.editMenuOpen; }
+      return div({ 'style-layout': 'row', 'style-justify': 'center', 'style-align': 'start', 'style-pad': 'xlarge', style: { minHeight: '450px' } },
+        Menu({ defaultOpen: true },
+          Menu.Trigger({
+            'style-layout': 'inline', 'style-radius': 'small', 'style-border': 'thin', 'style-tone': 'neutral',
+            'style-emphasis': 'outline', 'style-pad-block': 'small', 'style-pad-inline': 'medium'
           }, 'Edit'),
 
-          state.editMenuOpen ? MenuContent(
-            MenuItem({ id: 'menu-undo' }, 'Undo', MenuShortcut('⌘Z')),
-            MenuItem({ id: 'menu-redo' }, 'Redo', MenuShortcut('⇧⌘Z')),
-
-            MenuSeparator(),
-
-            MenuSub({ defaultOpen: false },
-              MenuSubTrigger('Find'),
-              MenuSubContent(
-                MenuItem('Search the web'),
-                MenuSeparator(),
-                MenuItem('Find...'),
-                MenuItem('Find Next'),
-                MenuItem('Find Previous')
+          Menu.Content(
+            Menu.Item({ id: 'menu-undo' }, 'Undo', Menu.Shortcut('⌘Z')),
+            Menu.Item({ id: 'menu-redo' }, 'Redo', Menu.Shortcut('⇧⌘Z')),
+            Menu.Separator(),
+            Menu.Sub(
+              Menu.SubTrigger('Find'),
+              Menu.SubContent(
+                Menu.Item('Search the web'),
+                Menu.Separator(),
+                Menu.Item('Find...'),
+                Menu.Item('Find Next'),
+                Menu.Item('Find Previous')
               )
             ),
-
-            MenuSeparator(),
-
-            MenuItem({ id: 'menu-cut' }, 'Cut'),
-            MenuItem({ id: 'menu-copy' }, 'Copy'),
-            MenuItem({ id: 'menu-paste' }, 'Paste'),
-
-            MenuSeparator(),
-
-            MenuCheckboxItem({
-              id: 'menu-ruler',
-              checked: state.showRuler,
-              onclick: () => { state.showRuler = !state.showRuler; }
-            }, 'Show Ruler'),
-
-            MenuSeparator(),
-
-            MenuRadioGroup(
-              MenuRadioItem({
-                id: 'menu-profile-work',
-                checked: state.activeProfile === 'work',
-                onclick: () => { state.activeProfile = 'work'; }
-              }, 'Work Profile'),
-              MenuRadioItem({
-                id: 'menu-profile-personal',
-                checked: state.activeProfile === 'personal',
-                onclick: () => { state.activeProfile = 'personal'; }
-              }, 'Personal Profile')
+            Menu.Separator(),
+            Menu.Item({ id: 'menu-cut' }, 'Cut'),
+            Menu.Item({ id: 'menu-copy' }, 'Copy'),
+            Menu.Item({ id: 'menu-paste' }, 'Paste'),
+            Menu.Separator(),
+            Menu.CheckboxItem({ id: 'menu-ruler', checked: state.showRuler, onclick: () => { state.showRuler = !state.showRuler; } }, 'Show Ruler'),
+            Menu.Separator(),
+            Menu.RadioGroup(
+              Menu.RadioItem({ id: 'menu-profile-work', checked: state.activeProfile === 'work', onclick: () => { state.activeProfile = 'work'; } }, 'Work Profile'),
+              Menu.RadioItem({ id: 'menu-profile-personal', checked: state.activeProfile === 'personal', onclick: () => { state.activeProfile = 'personal'; } }, 'Personal Profile')
             )
-          ) : null
+          )
         )
       );
     }
@@ -1300,15 +908,11 @@ render: [
     state: "Stateless (Pure UI)",
     exports: [Badge],
     render: function BadgeExample(state) {
-      return div(
-        { class: [design.layout.stack, design.size.wFull] },
-        div(
-          { class: design.layout.cluster },
-          Badge('Default'),
-          Badge({ variant: 'secondary' }, 'Secondary'),
-          Badge({ variant: 'outline' }, 'Outline'),
-          Badge({ variant: 'destructive' }, 'Destructive')
-        )
+      return div({ 'style-layout': 'cluster', 'style-gap': 'medium' },
+        Badge('Default'),
+        Badge({ variant: 'secondary' }, 'Secondary'),
+        Badge({ variant: 'outline' }, 'Outline'),
+        Badge({ variant: 'destructive' }, 'Destructive')
       );
     }
   }),
@@ -1323,15 +927,10 @@ render: [
     state: "Controlled or Imperative API",
     exports: [Spinner],
     render: [
-      /**
-       * Variation 1: Sizes
-       */
       function SpinnerSizes(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium' },
           Label('Standard Sizes'),
-          div(
-            { class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap6] },
+          div({ 'style-layout': 'row', 'style-gap': 'xlarge' },
             Spinner({ size: 'sm' }),
             Spinner({ size: 'md' }),
             Spinner({ size: 'lg' }),
@@ -1340,56 +939,35 @@ render: [
         );
       },
 
-      /**
-       * Variation 2: Declarative Control (Inside a Button)
-       */
+      // Declarative: the spinner mounts only while loading.
       function SpinnerDeclarative(state) {
         if (state.isLoading === undefined) state.isLoading = false;
 
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-align': 'start' },
           Label('Declarative State Control'),
-          div(
-            { class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap4] },
-            Button({
-              variant: 'outline',
-              disabled: state.isLoading,
-              loading: state.isLoading,
-              onclick: () => {
-                state.isLoading = true;
-                // Auto-reset after 2 seconds to simulate a network request
-                setTimeout(() => { state.isLoading = false; }, 2000);
-              }
-            },
-              // The spinner safely unmounts when isLoading is false
-              state.isLoading ? Spinner({ size: 'sm', spinning: true }) : null,
-              state.isLoading ? 'Please wait' : 'Start Loading'
-            )
+          Button({
+            variant: 'outline',
+            loading: state.isLoading,
+            onclick: () => {
+              state.isLoading = true;
+              setTimeout(() => { state.isLoading = false; }, 2000); // simulate a network request
+            }
+          },
+            state.isLoading && Spinner({ size: 'sm', spinning: true }),
+            state.isLoading ? 'Please wait' : 'Start Loading'
           )
         );
       },
 
-      /**
-       * Variation 3: Imperative API (Inside a Badge)
-       */
+      // Imperative: call .timeout(ms) on the spinner element.
       function SpinnerImperative(state) {
-        return div(
-          { class: [design.layout.stack, design.spacing.gap4] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium' },
           Label('Imperative API (.timeout)'),
-          div(
-            { class: [design.layout.flex, design.layout.itemsCenter, design.spacing.gap4] },
+          div({ 'style-layout': 'row', 'style-gap': 'medium' },
             Button({
               variant: 'secondary',
-              onclick: () => {
-                // Fetch the element by ID and call the component method
-                const spinnerEl = document.getElementById('demo-api-spinner');
-                if (spinnerEl && spinnerEl.timeout) {
-                  spinnerEl.timeout(2000); // Spin for 2 seconds then stop
-                }
-              }
+              onclick: () => document.getElementById('demo-api-spinner')?.timeout?.(2000)
             }, 'Trigger 2s Timeout'),
-
-            // Rendered alongside text inside the Badge component
             Badge({ variant: 'secondary' },
               Spinner({ id: 'demo-api-spinner', spinning: false, size: 'sm' }),
               'Processing'
@@ -1410,32 +988,15 @@ render: [
     state: "Controlled Component",
     exports: [Radio, RadioItem],
     render: function RadioExample(state) {
-      // Initialize default state
       if (state.radioValue === undefined) state.radioValue = 'comfortable';
 
-      return div(
-        { class: [design.layout.stack, design.interaction.selectNone], style: { width: '350px' } },
-        div(
-          { class: [design.layout.stack, design.spacing.gap4] },
-          // Status output
-          div(
-            { class: [design.typography.size1, design.typography.weightMedium, design.fg.fgMuted] },
-            `Selected Density: ${state.radioValue}`
-          ),
-
-          // The Radio Component
-          Radio({
-            value: state.radioValue,
-            onValueChange: (val) => {
-              state.radioValue = val;
-            }
-          },
-            // The items handle their own flex-layout, spacing, and label clicks now!
-            RadioItem({ value: 'default' }, 'Default'),
-            RadioItem({ value: 'comfortable' }, 'Comfortable'),
-            RadioItem({ value: 'compact' }, 'Compact'),
-            RadioItem({ value: 'custom', disabled: true }, 'Custom (Disabled)')
-          )
+      return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'medium' },
+        div({ 'style-text': 'small', 'style-weight': 'medium', 'style-tone': 'muted' }, `Selected Density: ${state.radioValue}`),
+        Radio({ value: state.radioValue, onValueChange: (val) => { state.radioValue = val; } },
+          RadioItem({ value: 'default' }, 'Default'),
+          RadioItem({ value: 'comfortable' }, 'Comfortable'),
+          RadioItem({ value: 'compact' }, 'Compact'),
+          RadioItem({ value: 'custom', disabled: true }, 'Custom (Disabled)')
         )
       );
     }
@@ -1451,76 +1012,22 @@ render: [
     state: "Internal Context",
     exports: [Tabs, TabsList, TabsTrigger, TabsContent],
     render: function TabsExample(state) {
-      return div({ style: { maxWidth: '32rem' } },
-        Tabs({ defaultValue: 'overview' },
+      const panels = [
+        ['overview', 'Overview', 'View your key metrics and recent project activity. Track progress across all your active projects.', 'You have 12 active projects and 3 pending tasks.'],
+        ['analytics', 'Analytics', 'Analyze your traffic and engagement over the last 30 days. Drill down into specific user cohorts.', 'Total visits: 14,203 (+12% from last month).'],
+        ['reports', 'Reports', 'Download and view automated weekly performance reports. Configure your email delivery preferences.', 'Your next scheduled report will be generated on Monday at 9:00 AM.'],
+        ['settings', 'Settings', 'Manage your account preferences, billing information, and API keys. Enable two-factor authentication.', 'Warning: Changing your primary region will restart your instances.']
+      ];
 
-          TabsList(
-            TabsTrigger({ value: 'overview' }, 'Overview'),
-            TabsTrigger({ value: 'analytics' }, 'Analytics'),
-            TabsTrigger({ value: 'reports' }, 'Reports'),
-            TabsTrigger({ value: 'settings' }, 'Settings')
-          ),
-
-          TabsContent({ value: 'overview', style: { marginTop: '0.5rem' } },
+      return Tabs({ defaultValue: 'overview', 'style-max-width': 'large' },
+        TabsList(...panels.map(([value, title]) => TabsTrigger({ value }, title))),
+        ...panels.map(([value, title, body, note]) =>
+          TabsContent({ value },
             Card(
-              CardHeader(CardTitle('Overview')),
-              CardContent({ style: { display: 'flex', flexDirection: 'column', gap: '1rem' } },
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0, lineHeight: '1.5' }
-                }, 'View your key metrics and recent project activity. Track progress across all your active projects.'),
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0 }
-                }, 'You have 12 active projects and 3 pending tasks.')
-              )
-            )
-          ),
-
-          TabsContent({ value: 'analytics', style: { marginTop: '0.5rem' } },
-            Card(
-              CardHeader(CardTitle('Analytics')),
-              CardContent({ style: { display: 'flex', flexDirection: 'column', gap: '1rem' } },
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0, lineHeight: '1.5' }
-                }, 'Analyze your traffic and engagement over the last 30 days. Drill down into specific user cohorts.'),
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0 }
-                }, 'Total visits: 14,203 (+12% from last month).')
-              )
-            )
-          ),
-
-          TabsContent({ value: 'reports', style: { marginTop: '0.5rem' } },
-            Card(
-              CardHeader(CardTitle('Reports')),
-              CardContent({ style: { display: 'flex', flexDirection: 'column', gap: '1rem' } },
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0, lineHeight: '1.5' }
-                }, 'Download and view automated weekly performance reports. Configure your email delivery preferences.'),
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0 }
-                }, 'Your next scheduled report will be generated on Monday at 9:00 AM.')
-              )
-            )
-          ),
-
-          TabsContent({ value: 'settings', style: { marginTop: '0.5rem' } },
-            Card(
-              CardHeader(CardTitle('Settings')),
-              CardContent({ style: { display: 'flex', flexDirection: 'column', gap: '1rem' } },
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0, lineHeight: '1.5' }
-                }, 'Manage your account preferences, billing information, and API keys. Enable two-factor authentication.'),
-                p({
-                  class: [design.typography.size1, design.fg.fgMuted],
-                  style: { margin: 0 }
-                }, 'Warning: Changing your primary region will restart your instances.')
+              CardHeader(CardTitle(title)),
+              CardContent({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-text': 'small', 'style-tone': 'muted' },
+                p({ 'style-margin': 'none' }, body),
+                p({ 'style-margin': 'none' }, note)
               )
             )
           )
@@ -1539,14 +1046,10 @@ render: [
     state: "Global Observer Pattern",
     exports: [Toaster],
     render: function ToastExample(state) {
-
-      // Helper function to throw toasts to specific corners
-      const triggerToast = (pos, type, msg) => {
-        const opts = { position: pos }; // The zone handles routing automatically
-
+      const triggerToast = (position, type, msg) => {
+        const opts = { position };
         if (type === 'promise') {
-          const myPromise = new Promise((resolve) => setTimeout(resolve, 2000));
-          toast.promise(myPromise, { ...opts, loading: 'Processing...', success: msg, error: 'Error' });
+          toast.promise(new Promise((resolve) => setTimeout(resolve, 2000)), { ...opts, loading: 'Processing...', success: msg, error: 'Error' });
         } else if (type === 'success') {
           toast.success(msg, opts);
         } else if (type === 'error') {
@@ -1558,22 +1061,19 @@ render: [
 
       return div(
         {
-          class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.size.wFull],
-          style: { minHeight: '400px', position: 'relative', overflow: 'hidden', borderRadius: 'var(--shape-radius-3)', border: '1px dashed var(--color-border-hover)' }
+          'style-layout': 'row', 'style-justify': 'center', 'style-width': 'full', 'style-position': 'relative',
+          'style-overflow': 'hidden', 'style-radius': 'medium', 'style-border': 'dashed', style: { minHeight: '400px' }
         },
-
-        div({ class: [design.layout.cluster, design.layout.justifyCenter, design.spacing.gap4], style: { maxWidth: '500px' } },
+        div({ 'style-layout': 'cluster', 'style-justify': 'center', 'style-gap': 'medium', 'style-max-width': 'large' },
           Button({ variant: 'outline', onclick: () => triggerToast('top-left', 'default', 'Event has been created') }, 'Top Left'),
           Button({ variant: 'outline', onclick: () => triggerToast('top-center', 'promise', 'Successfully processed!') }, 'Top Center'),
           Button({ variant: 'outline', onclick: () => triggerToast('top-right', 'success', 'Settings saved') }, 'Top Right'),
-
           Button({ variant: 'outline', onclick: () => triggerToast('bottom-left', 'error', 'Failed to connect') }, 'Bottom Left'),
           Button({ variant: 'outline', onclick: () => triggerToast('bottom-center', 'default', 'Profile updated') }, 'Bottom Center'),
           Button({ variant: 'outline', onclick: () => triggerToast('bottom-right', 'success', 'Action completed') }, 'Bottom Right')
         ),
-
-        // The Toaster is now a full-container invisible overlay that delegates layout zones
-        Toaster({ id: 'demo-toaster', fixed: false, style: { zIndex: 100 } })
+        // fixed: false keeps the toasts inside this frame instead of the viewport
+        Toaster({ id: 'demo-toaster', fixed: false, 'style-layer': 'overlay' })
       );
     }
   }),
@@ -1583,114 +1083,58 @@ render: [
     title: 'Slider',
     description: 'An interactive input for selecting a value or range of values from a continuous or discrete set.',
     filepath: './slider/slider.js',
-    imports: "import { Slider } from './slider/slider.js'", // Fixed the import path
+    imports: "import { Slider } from './slider/slider.js'",
     a11y: "role=\"slider\", aria-valuenow",
     state: "Controlled Component",
     exports: [Slider],
     render: [
-      /**
-       * Variation 1: Basic / Continuous
-       */
+      // Slider always reports an array, even for a single thumb.
       function SliderBasic(state) {
-        // The component returns an array even for single values, so we store/use the array.
         if (state.basicValue === undefined) state.basicValue = [50];
 
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium', 'style-interactive': 'static' },
           Label(`Volume: ${state.basicValue[0]}`),
-          Slider({
-            value: state.basicValue,
-            min: 0,
-            max: 100,
-            onValueChange: (val) => {
-              state.basicValue = val;
-            }
-          })
+          Slider({ value: state.basicValue, min: 0, max: 100, onValueChange: (val) => { state.basicValue = val; } })
         );
       },
 
-      /**
-       * Variation 2: Multi-thumb Range Slider
-       */
       function SliderRange(state) {
         if (state.rangeValue === undefined) state.rangeValue = [25, 75];
 
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          div(
-            { class: [design.layout.flex, design.layout.justifyBetween] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium', 'style-interactive': 'static' },
+          div({ 'style-layout': 'row', 'style-justify': 'between' },
             Label('Price Range'),
-            span({ class: design.typography.weightMedium }, `$${state.rangeValue[0]} - $${state.rangeValue[1]}`)
+            span({ 'style-weight': 'medium' }, `$${state.rangeValue[0]} - $${state.rangeValue[1]}`)
           ),
-          Slider({
-            value: state.rangeValue,
-            min: 0,
-            max: 100,
-            onValueChange: (val) => {
-              state.rangeValue = val;
-            }
-          })
+          Slider({ value: state.rangeValue, min: 0, max: 100, onValueChange: (val) => { state.rangeValue = val; } })
         );
       },
 
-      /**
-       * Variation 3: Stepped (Discrete) Slider
-       */
       function SliderStepped(state) {
         if (state.stepValue === undefined) state.stepValue = [30];
 
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium', 'style-interactive': 'static' },
           Label(`Discrete Step (10s): ${state.stepValue[0]}`),
-          Slider({
-            value: state.stepValue,
-            min: 0,
-            max: 100,
-            step: 10,
-            onValueChange: (val) => {
-              state.stepValue = val;
-            }
-          })
+          Slider({ value: state.stepValue, min: 0, max: 100, step: 10, onValueChange: (val) => { state.stepValue = val; } })
         );
       },
 
-      /**
-       * Variation 4: Vertical Orientation
-       */
+      // A vertical slider needs a container with an explicit height.
       function SliderVertical(state) {
         if (state.vertValue === undefined) state.vertValue = [60];
 
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-interactive': 'static' },
           Label(`Vertical Slider: ${state.vertValue[0]}`),
-          div(
-            { style: { height: '150px' } }, // Needs an explicit height container
-            Slider({
-              value: state.vertValue,
-              min: 0,
-              max: 100,
-              orientation: 'vertical',
-              onValueChange: (val) => {
-                state.vertValue = val;
-              }
-            })
+          div({ style: { height: '150px' } },
+            Slider({ value: state.vertValue, min: 0, max: 100, orientation: 'vertical', onValueChange: (val) => { state.vertValue = val; } })
           )
         );
       },
 
-      /**
-       * Variation 5: Disabled
-       */
       function SliderDisabled(state) {
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium', 'style-interactive': 'static' },
           Label('Disabled State'),
-          Slider({
-            value: [50],
-            min: 0,
-            max: 100,
-            disabled: true
-          })
+          Slider({ value: [50], min: 0, max: 100, disabled: true })
         );
       }
     ]
@@ -1706,54 +1150,35 @@ render: [
     state: "Controlled Component",
     exports: [Progress],
     render: [
-      /**
-       * Variation 1: Interactive / Determinate
-       */
       function ProgressInteractive(state) {
         if (state.progressValue === undefined) state.progressValue = 33;
 
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
-          // FIXED: Added design.spacing.gap4 to space out the label and button
-          div(
-            { class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyBetween, design.spacing.gap4] },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium' },
+          div({ 'style-layout': 'row', 'style-justify': 'between', 'style-gap': 'medium' },
             Label(`Downloading data (${state.progressValue}%)`),
             Button({
               variant: 'outline',
               size: 'sm',
-              onclick: () => {
-                state.progressValue = state.progressValue >= 100 ? 0 : Math.min(100, state.progressValue + 15);
-              }
+              onclick: () => { state.progressValue = state.progressValue >= 100 ? 0 : Math.min(100, state.progressValue + 15); }
             }, state.progressValue >= 100 ? 'Reset' : 'Increase')
           ),
-          Progress({ value: state.progressValue, max: 100 })
+          Progress({ value: state.progressValue })
         );
       },
 
-      /**
-       * Variation 2: Indeterminate
-       */
+      // value: null renders the indeterminate animation.
       function ProgressIndeterminate(state) {
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium' },
           Label('Connecting to server (Indeterminate)'),
           Progress({ value: null })
         );
       },
 
-      /**
-       * Variation 3: Complete & Custom Styling
-       */
+      // The indicator follows style-tone.
       function ProgressComplete(state) {
-        return div(
-          { class: [design.layout.stack, design.interaction.selectNone, design.spacing.gap4], style: { maxWidth: '400px', width: '100%' } },
+        return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full', 'style-max-width': 'medium' },
           Label('Installation Complete'),
-          Progress({
-            value: 100,
-            max: 100,
-            // FIXED: Using a valid background color token from the dictionary
-            indicatorClass: design.bg.successBg
-          })
+          Progress({ value: 100, 'style-tone': 'success' })
         );
       }
     ]
@@ -1769,186 +1194,118 @@ render: [
     render: [
       function VTableHNExample(state) {
         if (state.stories === undefined && !state.isLoading) {
-          state.isLoading = true;
-          state.columns = [
-            { key: 'title', label: 'Title' },
-            { key: 'score', label: 'Points' },
-            { key: 'by', label: 'Author' },
-            { key: 'descendants', label: 'Comments' }
-          ];
-          state.sortKey = 'score';
-          state.sortDir = 'desc';
-          state.draggedCol = null;
-          state.scrollTop = 0;
+          Object.assign(state, {
+            isLoading: true,
+            columns: [
+              { key: 'title', label: 'Title' },
+              { key: 'score', label: 'Points' },
+              { key: 'by', label: 'Author' },
+              { key: 'descendants', label: 'Comments' }
+            ],
+            sortKey: 'score', sortDir: 'desc', draggedCol: null, scrollTop: 0
+          });
 
           fetch('https://hacker-news.firebaseio.com/v0/topstories.json')
             .then(res => res.json())
-            .then(ids => {
-              const topIds = ids.slice(0, 100);
-              return Promise.all(topIds.map(id =>
-                fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`).then(r => r.json())
-              ));
-            })
-            .then(stories => {
-              state.stories = stories.filter(Boolean);
-              state.isLoading = false;
-            })
-            .catch(() => {
-              state.stories = [];
-              state.isLoading = false;
-            });
+            .then(ids => Promise.all(ids.slice(0, 100).map(id =>
+              fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`).then(r => r.json())
+            )))
+            .then(stories => { state.stories = stories.filter(Boolean); state.isLoading = false; })
+            .catch(() => { state.stories = []; state.isLoading = false; });
         }
 
         if (state.isLoading) {
-          return div(
-            { class: [design.layout.flex, design.layout.itemsCenter, design.layout.justifyCenter, design.size.wFull], style: { height: '400px' } },
-            span({ class: [design.fg.fgMuted, design.typography.size2] }, 'Fetching top stories from Hacker News...')
+          return div({ 'style-layout': 'center', 'style-width': 'full', style: { height: '400px' } },
+            span({ 'style-tone': 'muted' }, 'Fetching top stories from Hacker News...')
           );
         }
 
         const handleSort = (key) => {
-          if (state.sortKey === key) {
-            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-          } else {
-            state.sortKey = key;
-            state.sortDir = 'desc';
-          }
+          state.sortDir = state.sortKey === key && state.sortDir === 'desc' ? 'asc' : 'desc';
+          state.sortKey = key;
         };
 
         const sortedData = [...(state.stories || [])].sort((a, b) => {
           const valA = a[state.sortKey] ?? '';
           const valB = b[state.sortKey] ?? '';
-
-          if (typeof valA === 'number' && typeof valB === 'number') {
-            return state.sortDir === 'asc' ? valA - valB : valB - valA;
-          }
-          return state.sortDir === 'asc'
-            ? String(valA).localeCompare(String(valB))
-            : String(valB).localeCompare(String(valA));
+          const order = typeof valA === 'number' && typeof valB === 'number'
+            ? valA - valB
+            : String(valA).localeCompare(String(valB));
+          return state.sortDir === 'asc' ? order : -order;
         });
 
+        // Virtualization: render only the rows in view, with spacer rows above and below.
         const rowHeight = 45;
         const viewportHeight = 400;
         const buffer = 5;
-        const totalRows = sortedData.length;
-
         const startIndex = Math.max(0, Math.floor(state.scrollTop / rowHeight) - buffer);
-        const endIndex = Math.min(totalRows, startIndex + Math.ceil(viewportHeight / rowHeight) + (buffer * 2));
-
-        const visibleData = sortedData.slice(startIndex, endIndex);
+        const endIndex = Math.min(sortedData.length, startIndex + Math.ceil(viewportHeight / rowHeight) + buffer * 2);
         const paddingTop = startIndex * rowHeight;
-        const paddingBottom = (totalRows - endIndex) * rowHeight;
+        const paddingBottom = (sortedData.length - endIndex) * rowHeight;
 
-        const onDragStart = (col) => { state.draggedCol = col; };
         const onDrop = (targetCol) => {
           if (!state.draggedCol || state.draggedCol.key === targetCol.key) return;
-          const newCols = [...state.columns];
-          newCols.splice(newCols.findIndex(c => c.key === state.draggedCol.key), 1);
-          newCols.splice(newCols.findIndex(c => c.key === targetCol.key), 0, state.draggedCol);
-          state.columns = newCols;
+          const cols = state.columns.filter(c => c.key !== state.draggedCol.key);
+          cols.splice(cols.findIndex(c => c.key === targetCol.key), 0, state.draggedCol);
+          state.columns = cols;
           state.draggedCol = null;
         };
 
-        const renderCellContent = (colKey, row) => {
-          if (colKey === 'title') {
-            return a({
-              href: row.url || `https://news.ycombinator.com/item?id=${row.id}`,
-              target: '_blank',
-              class: [design.typography.weightMedium],
-              style: { color: 'var(--color-primary-3)', textDecoration: 'none' }
-            }, row.title);
-          }
-          return row[colKey] || '0';
-        };
+        const renderCell = (key, row) => key === 'title'
+          ? a({ href: row.url || `https://news.ycombinator.com/item?id=${row.id}`, target: '_blank', 'style-weight': 'medium', 'style-decoration': 'none' }, row.title)
+          : row[key] || '0';
 
-        return div(
-          { class: [design.layout.stack, design.size.wFull] },
-
-          VTable(
-            {
-              style: { height: `${viewportHeight}px` },
-              onscroll: (e) => { state.scrollTop = e.target.scrollTop; }
-            },
-
-            VTable.Caption(`Top ${totalRows} Hacker News Stories`),
-
-            VTable.Header(
-              VTable.Row(
+        return VTable({ style: { height: `${viewportHeight}px` }, onscroll: (e) => { state.scrollTop = e.target.scrollTop; } },
+          VTable.Caption(`Top ${sortedData.length} Hacker News Stories`),
+          VTable.Header(
+            VTable.Row(...state.columns.map(col =>
+              VTable.Head({
+                sortable: true,
+                sortDirection: state.sortKey === col.key ? state.sortDir : null,
+                onclick: () => handleSort(col.key),
+                draggable: true,
+                ondragstart: () => { state.draggedCol = col; },
+                ondragover: (e) => e.preventDefault(),
+                ondrop: () => onDrop(col),
+              }, col.label)
+            ))
+          ),
+          VTable.Body(
+            paddingTop > 0 && tr({ style: { height: `${paddingTop}px` } }, td({ colSpan: state.columns.length, 'style-pad': 'none', 'style-border': 'none' })),
+            ...sortedData.slice(startIndex, endIndex).map((row, index) =>
+              VTable.Row({ key: row.id, 'style-surface': (startIndex + index) % 2 ? 'muted' : undefined },
                 ...state.columns.map(col =>
-                  VTable.Head(
-                    {
-                      sortable: true,
-                      sortDirection: state.sortKey === col.key ? state.sortDir : null,
-                      onclick: () => handleSort(col.key),
-                      draggable: true,
-                      ondragstart: () => onDragStart(col),
-                      ondragover: (e) => e.preventDefault(),
-                      ondrop: () => onDrop(col),
-                    },
-                    col.label
-                  )
+                  VTable.Cell({ 'style-wrap': 'truncate', 'style-max-width': col.key === 'title' ? 'small' : undefined }, renderCell(col.key, row))
                 )
               )
             ),
-
-            VTable.Body(
-              paddingTop > 0 ? tr({ style: { height: `${paddingTop}px` } }, td({ colSpan: state.columns.length, style: { padding: 0, border: 0 } })) : null,
-
-              ...visibleData.map((row, index) =>
-                VTable.Row(
-                  {
-                    key: row.id,
-                    class: [(startIndex + index) % 2 === 1 ? design.bg.bgSubtle : '']
-                  },
-                  ...state.columns.map(col =>
-                    VTable.Cell(
-                      {
-                        class: [
-                          design.typography.overflowTruncate
-                        ],
-                        style: { maxWidth: col.key === 'title' ? '300px' : 'auto' }
-                      },
-                      renderCellContent(col.key, row)
-                    )
-                  )
-                )
-              ),
-
-              paddingBottom > 0 ? tr({ style: { height: `${paddingBottom}px` } }, td({ colSpan: state.columns.length, style: { padding: 0, border: 0 } })) : null
-            )
+            paddingBottom > 0 && tr({ style: { height: `${paddingBottom}px` } }, td({ colSpan: state.columns.length, 'style-pad': 'none', 'style-border': 'none' }))
           )
         );
       },
 
       function VTableHugeExample(state) {
-        // 1. Generate 50,000 Rows
         if (!state.invoices) {
-          state.invoices = Array.from({ length: 50000 }).map((_, i) => ({
-            invoice: `INV${(i + 1).toString().padStart(5, '0')}`,
-            status: i % 3 === 0 ? 'Pending' : i % 5 === 0 ? 'Unpaid' : 'Paid',
-            method: i % 2 === 0 ? 'Credit Card' : 'PayPal',
-            amount: `$${(Math.random() * 1000).toFixed(2)}`
-          }));
-          state.columns = [
-            { key: 'invoice', label: 'Invoice' },
-            { key: 'status', label: 'Status' },
-            { key: 'method', label: 'Method' },
-            { key: 'amount', label: 'Amount' }
-          ];
-          state.sortKey = 'invoice';
-          state.sortDir = 'asc';
-          state.draggedCol = null;
-          state.scrollTop = 0;
+          Object.assign(state, {
+            invoices: Array.from({ length: 50000 }, (_, i) => ({
+              invoice: `INV${String(i + 1).padStart(5, '0')}`,
+              status: i % 3 === 0 ? 'Pending' : i % 5 === 0 ? 'Unpaid' : 'Paid',
+              method: i % 2 === 0 ? 'Credit Card' : 'PayPal',
+              amount: `$${(Math.random() * 1000).toFixed(2)}`
+            })),
+            columns: [
+              { key: 'invoice', label: 'Invoice' },
+              { key: 'status', label: 'Status' },
+              { key: 'method', label: 'Method' },
+              { key: 'amount', label: 'Amount' }
+            ],
+            sortKey: 'invoice', sortDir: 'asc', draggedCol: null, scrollTop: 0
+          });
         }
 
-        // 2. Sorting Logic
         const handleSort = (key) => {
-          if (state.sortKey === key) {
-            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-          } else {
-            state.sortKey = key;
-            state.sortDir = 'asc';
-          }
+          state.sortDir = state.sortKey === key && state.sortDir === 'asc' ? 'desc' : 'asc';
+          state.sortKey = key;
         };
 
         const sortedData = [...state.invoices].sort((a, b) => {
@@ -1956,80 +1313,50 @@ render: [
           const valB = String(b[state.sortKey]).replace('$', '');
           const numA = parseFloat(valA);
           const numB = parseFloat(valB);
-          if (!isNaN(numA) && !isNaN(numB)) return state.sortDir === 'asc' ? numA - numB : numB - numA;
-          return state.sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+          const order = !isNaN(numA) && !isNaN(numB) ? numA - numB : valA.localeCompare(valB);
+          return state.sortDir === 'asc' ? order : -order;
         });
 
-        // 3. Virtualization Math
+        // Virtualization: render only the rows in view, with spacer rows above and below.
         const rowHeight = 45;
         const viewportHeight = 400;
         const buffer = 5;
-        const totalRows = sortedData.length;
-
         const startIndex = Math.max(0, Math.floor(state.scrollTop / rowHeight) - buffer);
-        const endIndex = Math.min(totalRows, startIndex + Math.ceil(viewportHeight / rowHeight) + (buffer * 2));
-
-        const visibleData = sortedData.slice(startIndex, endIndex);
+        const endIndex = Math.min(sortedData.length, startIndex + Math.ceil(viewportHeight / rowHeight) + buffer * 2);
         const paddingTop = startIndex * rowHeight;
-        const paddingBottom = (totalRows - endIndex) * rowHeight;
+        const paddingBottom = (sortedData.length - endIndex) * rowHeight;
 
-        // 4. Drag & Drop Handlers
-        const onDragStart = (col) => { state.draggedCol = col; };
         const onDrop = (targetCol) => {
           if (!state.draggedCol || state.draggedCol.key === targetCol.key) return;
-          const newCols = [...state.columns];
-          newCols.splice(newCols.findIndex(c => c.key === state.draggedCol.key), 1);
-          newCols.splice(newCols.findIndex(c => c.key === targetCol.key), 0, state.draggedCol);
-          state.columns = newCols;
+          const cols = state.columns.filter(c => c.key !== state.draggedCol.key);
+          cols.splice(cols.findIndex(c => c.key === targetCol.key), 0, state.draggedCol);
+          state.columns = cols;
           state.draggedCol = null;
         };
 
-        return div(
-          { class: [design.layout.stack, design.size.wFull] },
-
-          VTable(
-            {
-              style: { height: `${viewportHeight}px` },
-              onscroll: (e) => { state.scrollTop = e.target.scrollTop; }
-            },
-
-            VTable.Caption('A virtualized list of 50,000 invoices.'),
-
-            VTable.Header(
-              VTable.Row(
-                ...state.columns.map(col =>
-                  VTable.Head(
-                    {
-                      sortable: true,
-                      sortDirection: state.sortKey === col.key ? state.sortDir : null,
-                      onclick: () => handleSort(col.key),
-                      draggable: true,
-                      ondragstart: () => onDragStart(col),
-                      ondragover: (e) => e.preventDefault(),
-                      ondrop: () => onDrop(col),
-                    },
-                    col.label
-                  )
-                )
+        return VTable({ style: { height: `${viewportHeight}px` }, onscroll: (e) => { state.scrollTop = e.target.scrollTop; } },
+          VTable.Caption('A virtualized list of 50,000 invoices.'),
+          VTable.Header(
+            VTable.Row(...state.columns.map(col =>
+              VTable.Head({
+                sortable: true,
+                sortDirection: state.sortKey === col.key ? state.sortDir : null,
+                onclick: () => handleSort(col.key),
+                draggable: true,
+                ondragstart: () => { state.draggedCol = col; },
+                ondragover: (e) => e.preventDefault(),
+                ondrop: () => onDrop(col),
+              }, col.label)
+            ))
+          ),
+          VTable.Body(
+            paddingTop > 0 && tr({ style: { height: `${paddingTop}px` } }, td({ colSpan: state.columns.length, 'style-pad': 'none', 'style-border': 'none' })),
+            ...sortedData.slice(startIndex, endIndex).map((row, index) =>
+              VTable.Row({ key: row.invoice, 'style-surface': (startIndex + index) % 2 ? 'muted' : undefined },
+                ...state.columns.map(col => VTable.Cell(row[col.key]))
               )
             ),
-
-            VTable.Body(
-              paddingTop > 0 ? tr({ style: { height: `${paddingTop}px` } }, td({ colSpan: state.columns.length, style: { padding: 0, border: 0 } })) : null,
-
-              ...visibleData.map((row) =>
-                VTable.Row(
-                  { class: [row.id % 2 === 1 ? design.bg.bgSubtle : ''] },
-                  ...state.columns.map(col =>
-                    VTable.Cell(
-                      row[col.key]
-                    )
-                  )
-                )
-              ),
-
-              paddingBottom > 0 ? tr({ style: { height: `${paddingBottom}px` } }, td({ colSpan: state.columns.length, style: { padding: 0, border: 0 } })) : null
-            )
+            paddingBottom > 0 && tr({ style: { height: `${paddingBottom}px` } }, td({ colSpan: state.columns.length, 'style-pad': 'none', 'style-border': 'none' }))
           )
         );
       }
@@ -2046,11 +1373,11 @@ render: [
     state: "Image Load Lifecycle",
     exports: [Avatar, AvatarImage, AvatarFallback],
     render: function AvatarExample(state) {
-      return div(
-        { class: [design.layout.inlineFlex, design.spacing.gap2] },
+      return div({ 'style-layout': 'inline', 'style-gap': 'small' },
         Avatar(AvatarFallback('JD')),
         Avatar(AvatarFallback('AB')),
-        Avatar(AvatarFallback('CD'))
+        Avatar(AvatarFallback('CD')),
+        Avatar({ generate: 'ada.lovelace@example.com' })
       );
     }
   }),
@@ -2063,42 +1390,46 @@ render: [
     imports: "{ Dialog, DialogContent, DialogHeader... } from './dialog/dialog.js'",
     a11y: "Focus trap, aria-modal=\"true\", Promise-based API",
     state: "Programmatic Async State",
-    exports: [
-      Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
-      DialogDescription, DialogAction, DialogCancel
-    ],
-    render: function DialogExample(state) {
-      return div(
-        div(
-          { class: design.layout.cluster },
-
+    exports: [Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription, DialogAction, DialogCancel],
+    render: [
+      function DialogExample(state) {
+        return div(
           Button({
             onclick: async () => {
-              const el = document.getElementById('demo-dialog');
-              const result = await el.open();
+              const result = await document.getElementById('demo-dialog').open();
               console.log('Dialog closed with result:', result);
             }
           }, 'Open Dialog'),
-        ),
-
-        Dialog({ id: 'demo-dialog' },
-          DialogContent(
-            DialogHeader(
-              DialogTitle('Are you absolutely sure?'),
-              DialogDescription('This action cannot be undone. This will permanently delete your data.')
-            ),
-            DialogFooter(
-              DialogCancel(
-                Button({ variant: 'outline' }, 'Cancel')
+          Dialog({ id: 'demo-dialog' },
+            DialogContent(
+              DialogHeader(
+                DialogTitle('Are you absolutely sure?'),
+                DialogDescription('This action cannot be undone. This will permanently delete your data.')
               ),
-              DialogAction({ value: 'confirm-delete' },
-                Button({ variant: 'destructive' }, 'Continue')
+              DialogFooter(
+                DialogCancel(Button({ variant: 'outline' }, 'Cancel')),
+                DialogAction({ value: 'confirm-delete' }, Button({ variant: 'destructive' }, 'Continue'))
               )
             )
           )
-        )
-      );
-    }
+        );
+      },
+
+      // Controlled: the parent owns `open`; onclose syncs it when the dialog closes itself.
+      function DialogControlled(state) {
+        if (state.dialogOpen === undefined) state.dialogOpen = false;
+
+        return div(
+          Button({ variant: 'outline', onclick: () => { state.dialogOpen = true; } }, 'Open Controlled Dialog'),
+          Dialog({ id: 'demo-dialog-controlled', open: state.dialogOpen, onclose: () => { state.dialogOpen = false; } },
+            DialogContent(
+              DialogHeader(DialogTitle('Controlled dialog'), DialogDescription('Its visibility lives in the parent state.')),
+              DialogFooter(DialogCancel(Button('Close')))
+            )
+          )
+        );
+      }
+    ]
   }),
 
   documentComponent({
@@ -2111,14 +1442,97 @@ render: [
     state: "Stateless (Pure UI)",
     exports: [Separator],
     render: function SeparatorExample(state) {
-      return div(
-        { class: [design.layout.stack, design.spacing.gap4], style: { maxWidth: '300px' } },
-        div({ class: [design.fg.muted, design.typography.size1] }, 'Content above'),
+      return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-max-width': 'small', 'style-text': 'small', 'style-tone': 'muted' },
+        div('Content above'),
         Separator(),
-        div({ class: [design.fg.muted, design.typography.size1] }, 'Content below')
+        div('Content below')
+      );
+    }
+  }),
+
+  documentComponent({
+    id: 'Tree',
+    title: 'Tree',
+    description: 'A hierarchical list of expandable, selectable items.',
+    filepath: './tree/tree.js',
+    imports: "{ Tree } from './tree/tree.js'",
+    a11y: 'role="tree", role="treeitem" with aria-expanded / aria-selected / aria-disabled, role="group" branches',
+    state: 'Controlled (expanded, selected)',
+    exports: [Tree],
+    render: function TreeExample(state) {
+      if (state.treeOpen === undefined) state.treeOpen = { src: true };
+      if (state.treeSelected === undefined) state.treeSelected = 'index.js';
+
+      const toggle = (key) => () => { state.treeOpen = { ...state.treeOpen, [key]: !state.treeOpen[key] }; };
+      const item = (name, depth, extra = {}) => Tree.Item({
+        depth,
+        selected: state.treeSelected === name,
+        onclick: () => { state.treeSelected = name; },
+        ...extra
+      }, Tree.Label(name));
+
+      return Tree({ 'style-max-width': 'small' },
+        item('src', 0, { hasChildren: true, expanded: !!state.treeOpen.src, onToggle: toggle('src') }),
+        Tree.Branch({ expanded: !!state.treeOpen.src },
+          item('components', 1, { hasChildren: true, expanded: !!state.treeOpen.components, onToggle: toggle('components') }),
+          Tree.Branch({ expanded: !!state.treeOpen.components },
+            item('button.js', 2),
+            item('tree.js', 2)
+          ),
+          item('index.js', 1)
+        ),
+        item('package.json', 0),
+        item('secrets.env', 0, { disabled: true })
+      );
+    }
+  }),
+
+  documentComponent({
+    id: 'SplitLayout',
+    title: 'Split Layout',
+    description: 'Two resizable panes with a draggable handle; the size is saved per id and one side can collapse.',
+    filepath: './split/split.js',
+    imports: "{ SplitLayout } from './split/split.js'",
+    a11y: 'role="separator" handle with aria-orientation',
+    state: 'Internal size (persisted to localStorage by id), controlled collapse',
+    exports: [SplitLayout],
+    render: function SplitLayoutExample(state) {
+      if (state.splitCollapsed === undefined) state.splitCollapsed = false;
+
+      return div({ 'style-layout': 'stack', 'style-gap': 'medium', 'style-width': 'full' },
+        Button({ variant: 'outline', onclick: () => { state.splitCollapsed = !state.splitCollapsed; } }, state.splitCollapsed ? 'Show sidebar' : 'Hide sidebar'),
+        div({ 'style-position': 'relative', 'style-width': 'full', 'style-ratio': 'video', 'style-border': 'thin', 'style-radius': 'medium', 'style-overflow': 'hidden' },
+          SplitLayout({ id: 'demo-split', initialSplit: 200, min: 120, max: 400, collapseSide: 'left', isCollapsed: { value: state.splitCollapsed } },
+            div({ 'style-pad': 'medium', 'style-surface': 'muted', 'style-height': 'full', 'style-divider': 'end' }, 'Sidebar'),
+            div({ 'style-pad': 'medium' }, 'Drag the handle to resize.')
+          )
+        )
+      );
+    }
+  }),
+
+  documentComponent({
+    id: 'CreditCardInput',
+    title: 'Credit Card Input',
+    description: 'A card number field that groups digits in fours and shows the card brand.',
+    filepath: './creditcardinput/creditcardinput.js',
+    imports: "{ CreditCardInput } from './creditcardinput/creditcardinput.js'",
+    a11y: 'inputmode="numeric", autocomplete="cc-number", aria-invalid',
+    state: 'Controlled or Uncontrolled, imperative getValue/setValue/clear/setInvalid',
+    exports: [CreditCardInput],
+    render: function CreditCardInputExample(state) {
+      if (state.cardNumber === undefined) state.cardNumber = '';
+
+      return div({ 'style-layout': 'stack', 'style-gap': 'small', 'style-width': 'full', 'style-max-width': 'medium' },
+        Label('Card number'),
+        CreditCardInput({
+          id: 'demo-card-input',
+          placeholder: '0000 0000 0000 0000',
+          value: state.cardNumber,
+          oninput: (e, value) => { state.cardNumber = value; }
+        }),
+        span({ 'style-text': 'small', 'style-tone': 'muted' }, 'Try a number starting with 4 or 5.')
       );
     }
   })
 ];
-
-

@@ -1,350 +1,222 @@
-import { component, html, design } from '../../../giant.js';
+import { component, html, signal } from '../../../giant.js';
 
-const { div, li, ol, span, svg, path, polyline, circle, g } = html;
+const { div, li, ol, span, svg, path, polyline, circle } = html;
 
 let toasts = [];
-let listeners = new Set();
+const listeners = new Set();
 let toastCounter = 0;
 
-const notify = () => {
-  listeners.forEach(listener => listener(toasts));
+const publish = (next) => {
+  toasts = next;
+  listeners.forEach((listener) => listener(toasts));
 };
 
+/**
+ * Shows a toast and returns its id. Calling it again with the same `id` replaces that toast in place.
+ * @param {string} message
+ * @param {Object} [opts]
+ * @param {string|number} [opts.id]
+ * @param {'default'|'success'|'error'|'loading'} [opts.type='default']
+ * @param {number} [opts.duration=4000] - Milliseconds; Infinity keeps it open.
+ * @param {'top-left'|'top-center'|'top-right'|'bottom-left'|'bottom-center'|'bottom-right'} [opts.position='bottom-right']
+ */
 export const toast = (message, opts = {}) => {
-  /**
-   * toast Utility
-   *
-   * @function
-   * @description Creates and displays a toast notification.
-   *
-   * @param {string} message - Toast message content.
-   * @param {Object} [opts={}] - Toast options.
-   * @param {string|number} [opts.id] - Custom toast id.
-   * @param {'default'|'success'|'error'|'loading'} [opts.type='default'] - Toast visual type.
-   * @param {number} [opts.duration=4000] - Toast duration in milliseconds.
-   * @param {'top-left'|'top-center'|'top-right'|'bottom-left'|'bottom-center'|'bottom-right'} [opts.position='bottom-right'] - Toast position.
-   * @returns {string|number} Toast id.
-   */
-  const id = opts.id || ++toastCounter;
-  // Route to bottom-right by default if no position is specified
-  const newToast = { id, message, type: 'default', duration: 4000, position: 'bottom-right', ...opts, mounted: false, dismissed: false };
-
-  toasts = [newToast, ...toasts].slice(0, 5);
-  notify();
+  const id = opts.id ?? ++toastCounter;
+  const next = { id, message, type: 'default', duration: 4000, position: 'bottom-right', ...opts, dismissed: false };
+  publish(toasts.some((t) => t.id === id)
+    ? toasts.map((t) => (t.id === id ? next : t))
+    : [next, ...toasts].slice(0, 5));
   return id;
 };
 
-toast.success = (msg, opts) => {
-  /**
-   * toast.success Utility
-   *
-   * @function
-   * @description Creates a success toast.
-   *
-   * @param {string} msg - Toast message content.
-   * @param {Object} [opts] - Toast options.
-   * @returns {string|number} Toast id.
-   */
-  return toast(msg, { ...opts, type: 'success' });
-};
+toast.success = (msg, opts) => toast(msg, { ...opts, type: 'success' });
+toast.error = (msg, opts) => toast(msg, { ...opts, type: 'error' });
+toast.loading = (msg, opts) => toast(msg, { ...opts, type: 'loading', duration: Infinity });
 
-toast.error = (msg, opts) => {
-  /**
-   * toast.error Utility
-   *
-   * @function
-   * @description Creates an error toast.
-   *
-   * @param {string} msg - Toast message content.
-   * @param {Object} [opts] - Toast options.
-   * @returns {string|number} Toast id.
-   */
-  return toast(msg, { ...opts, type: 'error' });
-};
-
-toast.loading = (msg, opts) => {
-  /**
-   * toast.loading Utility
-   *
-   * @function
-   * @description Creates a persistent loading toast.
-   *
-   * @param {string} msg - Toast message content.
-   * @param {Object} [opts] - Toast options.
-   * @returns {string|number} Toast id.
-   */
-  return toast(msg, { ...opts, type: 'loading', duration: Infinity });
-};
-
+/** Dismisses a toast (or every toast when `id` is omitted) and removes it after the exit animation. */
 toast.dismiss = (id) => {
-  /**
-   * toast.dismiss Utility
-   *
-   * @function
-   * @description Dismisses a toast by id and removes it after the exit animation.
-   *
-   * @param {string|number} id - Toast id to dismiss.
-   * @returns {void}
-   */
-  toasts = toasts.map(t => t.id === id ? { ...t, dismissed: true } : t);
-  notify();
-  setTimeout(() => {
-    toasts = toasts.filter(t => t.id !== id);
-    notify();
-  }, 400);
+  publish(toasts.map((t) => (id == null || t.id === id ? { ...t, dismissed: true } : t)));
+  setTimeout(() => publish(toasts.filter((t) => !t.dismissed)), 400);
 };
 
+/**
+ * Shows a loading toast until `promise` settles, then switches it to success or error.
+ * @param {{ loading?: string, success: string|Function, error: string|Function, duration?: number }} opts - Also accepts toast options.
+ */
 toast.promise = (promise, opts) => {
-  /**
-   * toast.promise Utility
-   *
-   * @function
-   * @description Displays a loading toast while a promise resolves, then updates it to success or error.
-   *
-   * @param {Promise} promise - Promise to track.
-   * @param {Object} opts - Promise toast options.
-   * @param {string} [opts.loading='Loading...'] - Loading message.
-   * @param {string|Function} opts.success - Success message or formatter.
-   * @param {string|Function} opts.error - Error message or formatter.
-   * @returns {Promise} The original promise.
-   */
-  const id = toast.loading(opts.loading || 'Loading...', opts); // Pass opts to inherit position
-  promise
-    .then((res) => {
-      const msg = typeof opts.success === 'function' ? opts.success(res) : opts.success;
-      toasts = toasts.map(t => t.id === id ? { ...t, message: msg, type: 'success', duration: 4000 } : t);
-      notify();
-    })
-    .catch((err) => {
-      const msg = typeof opts.error === 'function' ? opts.error(err) : opts.error;
-      toasts = toasts.map(t => t.id === id ? { ...t, message: msg, type: 'error', duration: 4000 } : t);
-      notify();
-    });
+  const id = toast.loading(opts.loading || 'Loading...', opts);
+  const settle = (type, message) => (result) => publish(toasts.map((t) => (t.id === id
+    ? { ...t, type, duration: opts.duration ?? 4000, message: typeof message === 'function' ? message(result) : message }
+    : t)));
+  promise.then(settle('success', opts.success), settle('error', opts.error));
   return promise;
 };
 
-// FIXED: Changed to `function(props)` so `this` binds correctly
-const ToastItem = component.ToastItem(function(props) {
-  const { t, index, expanded, position } = props;
+/** Auto-dismiss timer that can be paused (hover, hidden page, detach) and restarted with a new duration. */
+const dismissTimer = (id) => {
+  const timer = {
+    pause() {
+      if (!timer.handle) return;
+      clearTimeout(timer.handle);
+      timer.handle = null;
+      timer.remaining -= Date.now() - timer.startedAt;
+    },
+    resume() {
+      if (timer.handle || timer.remaining === Infinity || document.hidden) return;
+      timer.startedAt = Date.now();
+      timer.handle = setTimeout(() => toast.dismiss(id), timer.remaining);
+    },
+    // a new duration (e.g. loading -> success) starts the countdown over
+    run(duration) {
+      if (duration !== timer.duration) {
+        timer.pause();
+        timer.duration = timer.remaining = duration;
+      }
+      timer.resume();
+    },
+    onvisibility: () => (document.hidden ? timer.pause() : timer.resume())
+  };
+  return timer;
+};
 
+const ICON = { viewBox: '0 0 24 24', width: '20', height: '20', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' };
+
+const ICONS = {
+  success: () => svg({ ...ICON, 'style-tone': 'success' }, polyline({ points: '20 6 9 17 4 12' })),
+  error: () => svg({ ...ICON, 'style-tone': 'danger' }, path({ d: 'M18 6L6 18M6 6l12 12' })),
+  loading: () => svg({ ...ICON, 'style-tone': 'muted', 'style-motion': 'spin' }, circle({ cx: '12', cy: '12', r: '9', 'stroke-dasharray': '42.4 14.15' }))
+};
+
+const TOAST = {
+  'data-toast-item': true,
+  'style-position': 'absolute',
+  'style-width': 'full',
+  'style-layout': 'row',
+  'style-gap': 'small',
+  'style-pad': 'medium',
+  'style-surface': 'overlay',
+  'style-border': 'thin',
+  'style-radius': 'medium',
+  'style-text': 'small',
+  // swipe-to-dismiss: touch-action none + no text selection
+  'style-interactive': 'drag'
+};
+
+const setSwipe = (item, px) => item.style.setProperty('--swipe-amount', `${px}px`);
+
+const ToastItem = component.ToastItem(({ t, index, expanded, position }) => {
   const isTop = position.startsWith('top');
-
-  if (this.state.mounted === undefined) {
-    this.state.mounted = false;
-    setTimeout(() => {
-      this.state.mounted = true;
-    }, 10);
-  }
-
-  if (!this.state.timerConfigured && t.duration !== Infinity) {
-    let timeoutId;
-    let remainingTime = t.duration;
-    let startTime;
-
-    const startTimer = () => {
-      startTime = Date.now();
-      timeoutId = setTimeout(() => toast.dismiss(t.id), remainingTime);
-    };
-
-    const pauseTimer = () => {
-      clearTimeout(timeoutId);
-      remainingTime -= Date.now() - startTime;
-    };
-
-    const handleVisibility = () => { document.hidden ? pauseTimer() : startTimer(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    startTimer();
-
-    this.addEventListener('destroyed', () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    });
-
-    this.state.pause = pauseTimer;
-    this.state.resume = startTimer;
-    this.state.timerConfigured = true;
-  }
-
-  if (!this.state.setupSwipe) {
-    this.state.dragging = false;
-    this.state.startY = 0;
-    this.state.swipeAmount = 0;
-    this.state.startTime = 0;
-
-    this.onDown = (e) => {
-      this.state.dragging = true;
-      this.state.startY = e.clientY;
-      this.state.startTime = Date.now();
-      e.target.setPointerCapture(e.pointerId);
-    };
-
-    this.onMove = (e) => {
-      if (!this.state.dragging) return;
-      const yPos = e.clientY - this.state.startY;
-
-      const isDraggingInDir = isTop ? yPos < 0 : yPos > 0;
-
-      if (isDraggingInDir) {
-        this.state.swipeAmount = yPos;
-        e.target.closest('li').style.setProperty('--swipe-amount', `${yPos}px`);
-      }
-    };
-
-    this.onUp = (e) => {
-      if (!this.state.dragging) return;
-      this.state.dragging = false;
-      e.target.releasePointerCapture(e.pointerId);
-
-      const timeTaken = Date.now() - this.state.startTime;
-      const velocity = Math.abs(this.state.swipeAmount) / timeTaken;
-
-      if (Math.abs(this.state.swipeAmount) >= 50 || velocity > 0.11) {
-        toast.dismiss(t.id);
-      } else {
-        this.state.swipeAmount = 0;
-        e.target.closest('li').style.setProperty('--swipe-amount', `0px`);
-      }
-    };
-    this.state.setupSwipe = true;
-  }
+  const mounted = signal.mounted(false);
+  // { y, at, amount } while the toast is being swiped
+  const drag = signal.drag(null);
+  const timer = signal.timer(() => dismissTimer(t.id)).value;
 
   const isFront = index === 0;
-  const isVisible = this.state.mounted && !t.dismissed;
-
+  const isVisible = mounted.value && !t.dismissed;
   const dir = isTop ? 1 : -1;
-  const yOffset = expanded ? (index * 64 * dir) : (index * 14 * dir);
-  const scale = expanded ? 1 : (1 - (index * 0.05));
+  const yOffset = index * (expanded ? 64 : 14) * dir;
 
-  const baseTranslate = isVisible ? yOffset : (yOffset - (100 * dir));
-  const opacity = isVisible ? (expanded || index < 3 ? 1 : 0) : 0;
-
-  const iconStyle = { width: '1.25rem', height: '1.25rem', marginRight: '0.75rem', flexShrink: 0 };
-
-  const Icons = {
-    success: svg({ viewBox: '0 0 24 24', fill: 'none', stroke: design.color.success[3], 'stroke-width': '2', style: iconStyle }, polyline({ points: '20 6 9 17 4 12' })),
-    error: svg({ viewBox: '0 0 24 24', fill: 'none', stroke: design.color.danger[3], 'stroke-width': '2', style: iconStyle }, path({ d: 'M18 6L6 18M6 6l12 12' })),
-    loading: svg({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', style: { ...iconStyle, opacity: 0.5 } }, g({ style: { animation: 'spin 1s linear infinite', transformOrigin: '12px 12px' } }, circle({ cx: '12', cy: '12', r: '9', 'stroke-dasharray': '42.4 14.15' })))
-  };
-
-  return li({
-    id: `toast-${t.id}`,
-    'data-sonner-toast': true,
-    'data-expanded': expanded,
-    'data-front': isFront,
-    onpointerdown: this.onDown,
-    onpointermove: this.onMove,
-    onpointerup: this.onUp,
-    onpointerenter: this.state.pause,
-    onpointerleave: this.state.resume,
-    class: [
-      design.layout.absolute,
-      design.size.wFull,
-      design.bg.bgSurface,
-      design.shape.border1,
-      design.border.borderMuted,
-      design.shape.radius2,
-      design.effect.shadow2,
-      design.layout.flex,
-      design.layout.itemsCenter,
-      design.typography.size1,
-      design.interaction.selectNone
-    ],
-    style: {
-      left: '0',
-      right: '0',
-      top: isTop ? '0' : 'auto',
-      bottom: isTop ? 'auto' : '0',
-      padding: '1rem',
-      transformOrigin: isTop ? 'top center' : 'bottom center',
-      touchAction: 'none',
-      zIndex: 50 - index,
-      transition: this.state.dragging ? 'none' : 'transform 400ms cubic-bezier(0.16, 1, 0.3, 1), opacity 400ms ease',
-      transform: `translateY(calc(${baseTranslate}px + var(--swipe-amount, 0px))) scale(${scale})`,
-      opacity: opacity,
-      pointerEvents: isVisible && (isFront || expanded) ? 'auto' : 'none'
-    }
-  },
-    t.type !== 'default' ? Icons[t.type] : null,
-    span({ class: design.typography.weightMedium }, t.message)
-  );
-});
-
-// FIXED: Changed to `function(props)` so `this` binds correctly
-export const Toaster = component.Toaster(function(props) {
-  const { expand = false, fixed = true, class: customClass = '', ...rest } = props;
-
-  if (!this.state.initialized) {
-    this.state.toasts = [...toasts];
-    this.state.isHovered = false;
-
-    const listener = (newToasts) => {
-      this.state.toasts = [...newToasts];
-    };
-
-    listeners.add(listener);
-
-    this.addEventListener('destroyed', () => {
-      listeners.delete(listener);
-    });
-
-    this.state.initialized = true;
-  }
-
-  const isExpanded = expand || this.state.isHovered;
-
-  const toastsByPosition = {};
-  this.state.toasts.forEach(t => {
-    const pos = t.position || 'bottom-right';
-    if (!toastsByPosition[pos]) toastsByPosition[pos] = [];
-    toastsByPosition[pos].push(t);
-  });
-
-  const POSITIONS = {
-    'top-left': { top: '24px', left: '24px', bottom: 'auto', right: 'auto' },
-    'top-center': { top: '24px', left: '50%', transform: 'translateX(-50%)', bottom: 'auto', right: 'auto' },
-    'top-right': { top: '24px', right: '24px', bottom: 'auto', left: 'auto' },
-    'bottom-left': { bottom: '24px', left: '24px', top: 'auto', right: 'auto' },
-    'bottom-center': { bottom: '24px', left: '50%', transform: 'translateX(-50%)', top: 'auto', right: 'auto' },
-    'bottom-right': { bottom: '24px', right: '24px', top: 'auto', left: 'auto' }
-  };
-
-  return div(
+  return [
     {
-      ...rest,
-      class: [
-        fixed ? design.layout.fixed : design.layout.absolute,
-        design.layout.inset0,
-        design.layout.zOverlay,
-        customClass
-      ],
-      style: {
-        pointerEvents: 'none',
-        ...rest.style
+      onready: () => {
+        setTimeout(() => { mounted.value = true; }, 10);
+        document.addEventListener('visibilitychange', timer.onvisibility);
+        timer.run(t.duration);
       },
-      onpointerenter: () => { this.state.isHovered = true; },
-      onpointerleave: () => { this.state.isHovered = false; }
+      onupdated: () => timer.run(t.duration),
+      // also fires when the toast is moved within the stack; onready resumes it
+      ondestroyed: () => {
+        timer.pause();
+        document.removeEventListener('visibilitychange', timer.onvisibility);
+      },
+      // enter/leave don't bubble, so they go on the host rather than through delegation
+      onpointerenter: timer.pause,
+      onpointerleave: timer.resume
     },
-    ...Object.keys(POSITIONS).map(pos => {
-      const posToasts = toastsByPosition[pos] || [];
-      return ol({
-        key: pos,
-        id: `toast-zone-${pos}`,
-        class: design.layout.relative,
+    li(
+      TOAST,
+      {
+        id: `toast-${t.id}`,
+        'data-expanded': expanded,
+        'data-front': isFront,
+        'style-inset': isTop ? 'top' : 'bottom',
+        // no transition while dragging so the toast tracks the pointer
+        'style-motion': drag.value ? undefined : 'all',
+        onpointerdown: (e) => {
+          const item = e.target.closest('li');
+          drag.value = { y: e.clientY, at: Date.now(), amount: 0 };
+          item.setPointerCapture(e.pointerId);
+        },
+        onpointermove: (e) => {
+          if (!drag.value) return;
+          const y = e.clientY - drag.value.y;
+          // only towards the edge the toast came from
+          if (isTop ? y < 0 : y > 0) setSwipe(e.target.closest('li'), drag.value.amount = y);
+        },
+        onpointerup: (e) => {
+          const d = drag.value;
+          if (!d) return;
+          const item = e.target.closest('li');
+          drag.value = null;
+          item.releasePointerCapture(e.pointerId);
+          const distance = Math.abs(d.amount);
+          if (distance >= 50 || distance / Math.max(Date.now() - d.at, 1) > 0.11) toast.dismiss(t.id);
+          else setSwipe(item, 0);
+        },
+        // runtime stacking, swipe and enter/exit state
         style: {
-          position: 'absolute',
-          width: '356px',
-          margin: 0,
-          padding: 0,
-          listStyle: 'none',
-          ...POSITIONS[pos]
+          transformOrigin: isTop ? 'top center' : 'bottom center',
+          zIndex: 50 - index,
+          transform: `translateY(calc(${isVisible ? yOffset : yOffset - 100 * dir}px + var(--swipe-amount, 0px))) scale(${expanded ? 1 : 1 - index * 0.05})`,
+          opacity: isVisible && (expanded || index < 3) ? 1 : 0,
+          // the Toaster layer is inert; only the front (or expanded) toasts take input
+          pointerEvents: isVisible && (isFront || expanded) ? 'auto' : 'none'
         }
       },
-        ...posToasts.map((t, index) =>
-          ToastItem({ id: `toast-item-${t.id}`, key: t.id, t, index, expanded: isExpanded, position: pos })
-        )
-      )
-    })
-  );
+      ICONS[t.type]?.(),
+      span({ 'style-weight': 'medium' }, t.message)
+    )
+  ];
 });
 
+// TODO(style): no corner/edge placement attribute for the six toast zones
+const EDGE = 'var(--space-large)';
+const ZONES = {
+  'top-left': { top: EDGE, left: EDGE },
+  'top-center': { top: EDGE, left: '50%', transform: 'translateX(-50%)' },
+  'top-right': { top: EDGE, right: EDGE },
+  'bottom-left': { bottom: EDGE, left: EDGE },
+  'bottom-center': { bottom: EDGE, left: '50%', transform: 'translateX(-50%)' },
+  'bottom-right': { bottom: EDGE, right: EDGE }
+};
+
+/** Renders all toasts. `fixed=false` positions the layer inside its container instead of the viewport. */
+export const Toaster = component.Toaster(({ id, expand = false, fixed = true, ...rest }) => {
+  const list = signal.toasts(() => toasts);
+  const hovered = signal.hovered(false);
+  const listener = signal.listener(() => (next) => { list.value = next; }).value;
+  const expanded = expand || hovered.value;
+
+  return [
+    {
+      // subscribe on attach rather than at render time, so the Toaster also renders on the server
+      onready: () => {
+        listeners.add(listener);
+        list.value = toasts;
+      },
+      ondestroyed: () => listeners.delete(listener),
+      onpointerenter: () => { hovered.value = true; },
+      onpointerleave: () => { hovered.value = false; }
+    },
+    div(
+      { 'style-position': fixed ? 'fixed' : 'absolute', 'style-inset': 'fill', 'style-layer': 'top', 'style-interactive': 'inert' },
+      rest,
+      ...Object.entries(ZONES).map(([pos, style]) => ol(
+        { key: pos, id: `toast-zone-${pos}`, 'style-position': 'absolute', 'style-width': 'medium', 'style-margin': 'none', 'style-pad': 'none', style },
+        ...list.value
+          .filter((t) => (t.position || 'bottom-right') === pos)
+          .map((t, index) => ToastItem({ id: `toast-item-${t.id}`, key: t.id, t, index, expanded, position: pos }))
+      ))
+    )
+  ];
+});

@@ -1,4 +1,4 @@
-import { component, createRoot, html } from '../../giant.js';
+import { component, createRoot, html, signal } from '../../giant.js';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogAction, DialogCancel
@@ -40,6 +40,23 @@ const DialogTestApp = component(function DialogTestApp() {
   );
 }, 'dialog-test-app');
 
+// Controlled dialog: the parent owns `open` and is told about self-closes via onclose
+let setShown;
+const closedWith = [];
+const ControlledDialogApp = component(function ControlledDialogApp() {
+  const shown = signal.shown(false);
+  setShown = (v) => { shown.value = v; };
+  return Dialog(
+    {
+      id: 'dialog-controlled',
+      'data-testid': 'dialog-controlled',
+      open: shown.value,
+      onclose: (value) => { closedWith.push(value); shown.value = false; }
+    },
+    DialogContent({}, 'Controlled')
+  );
+}, 'dialog-controlled-app');
+
 // --- TEST RUNNER EXPORT ---
 export async function testDialog(mountPoint, assert) {
   const appNode = await createRoot(DialogTestApp);
@@ -59,8 +76,8 @@ export async function testDialog(mountPoint, assert) {
   // --- INITIALIZATION TESTS ---
   // ==========================================
   assert(
-    dialogInner.style.display === 'none',
-    'Initialization: Dialog is hidden (display: none) by default'
+    dialogInner.hidden === true,
+    'Initialization: Dialog is hidden (hidden attribute) by default'
   );
 
   assert(
@@ -80,7 +97,9 @@ export async function testDialog(mountPoint, assert) {
   const btnSave = appNode.querySelector('[data-testid="btn-save"]');
 
   assert(
-    dialogInner.style.display === 'block',
+    dialogInner.hidden === false &&
+    dialogInner.getAttribute('style-layout') === 'center' &&
+    dialogInner.getAttribute('style-layer') === 'modal',
     'API: calling open() makes the dialog visible'
   );
 
@@ -97,7 +116,7 @@ export async function testDialog(mountPoint, assert) {
 
   // 4. Assert the animation state via data-attributes instead of inline styles
   assert(
-    dialogInner.style.pointerEvents === 'none' && dialogInner.getAttribute('data-dialog-state') === 'closing',
+    dialogInner.getAttribute('style-interactive') === 'inert' && dialogInner.getAttribute('data-dialog-state') === 'closing',
     'Animation: Dialog disables pointer events and enters "closing" state immediately upon closing'
   );
 
@@ -113,7 +132,7 @@ export async function testDialog(mountPoint, assert) {
   await nextTick();
 
   assert(
-    dialogInner.style.display === 'none' && document.body.style.overflow === '',
+    dialogInner.hidden === true && document.body.style.overflow === '',
     'Lifecycle: After animation, dialog is hidden and body scroll is restored'
   );
 
@@ -183,4 +202,52 @@ export async function testDialog(mountPoint, assert) {
   );
 
   await wait(250); // Final cleanup tick
+
+  // ==========================================
+  // --- DOUBLE CLOSE GUARD ---
+  // ==========================================
+  const closeCalls = [];
+  openPromise = dialogHost.open().then((v) => closeCalls.push(v));
+  await nextTick();
+  dialogHost.close('first');
+  dialogHost.close('second');
+  await wait(250);
+
+  assert(
+    closeCalls.length === 1 && closeCalls[0] === 'first',
+    'API: close() while the exit animation runs is ignored'
+  );
+
+  // ==========================================
+  // --- CONTROLLED (open PROP) TESTS ---
+  // ==========================================
+  const controlledNode = await createRoot(ControlledDialogApp);
+  mountPoint.appendChild(controlledNode);
+  await nextTick();
+  const controlled = controlledNode.querySelector('[data-testid="dialog-controlled"]');
+
+  assert(controlled.hidden === true, 'Controlled: open=false keeps the dialog hidden');
+
+  setShown(true);
+  await nextTick();
+  assert(
+    controlled.hidden === false && document.body.style.overflow === 'hidden',
+    'Controlled: open=true shows the dialog and locks scroll'
+  );
+
+  setShown(false);
+  await wait(250);
+  assert(
+    controlled.hidden === true && document.body.style.overflow === '' && closedWith.length === 0,
+    'Controlled: open=false animates out without calling onclose'
+  );
+
+  setShown(true);
+  await nextTick();
+  controlled.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await wait(250);
+  assert(
+    closedWith.length === 1 && closedWith[0] === null && controlled.hidden === true,
+    'Controlled: a backdrop click calls onclose(null) and the dialog closes'
+  );
 }

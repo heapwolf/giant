@@ -41,6 +41,30 @@ export async function testTabs(mountPoint, assert) {
         ),
         TabsContent({ id: 'ctrl-cont-a', value: 'a' }, 'Content A'),
         TabsContent({ id: 'ctrl-cont-b', value: 'b' }, 'Content B')
+      ),
+
+      // 3. No defaultValue, numeric values and a nested Tabs inside a panel
+      Tabs(
+        { id: 'tabs-outer' },
+        TabsList(
+          {},
+          TabsTrigger({ id: 'outer-trig-1', value: 1 }, 'Outer 1'),
+          TabsTrigger({ id: 'outer-trig-2', value: 2 }, 'Outer 2')
+        ),
+        TabsContent(
+          { id: 'outer-cont-1', value: 1 },
+          Tabs(
+            { id: 'tabs-inner', defaultValue: 2 },
+            TabsList(
+              {},
+              TabsTrigger({ id: 'inner-trig-1', value: 1 }, 'Inner 1'),
+              TabsTrigger({ id: 'inner-trig-2', value: 2 }, 'Inner 2')
+            ),
+            TabsContent({ id: 'inner-cont-1', value: 1 }, 'Inner content 1'),
+            TabsContent({ id: 'inner-cont-2', value: 2 }, 'Inner content 2')
+          )
+        ),
+        TabsContent({ id: 'outer-cont-2', value: 2 }, 'Outer content 2')
       )
     );
   });
@@ -78,8 +102,14 @@ export async function testTabs(mountPoint, assert) {
   );
 
   assert(
-    cont1.style.display === '' && cont3.style.display === 'none',
+    !cont1.hidden && cont3.hidden,
     'Initialization: defaultValue correctly reveals the active content and hides the others'
+  );
+
+  assert(
+    trig1.getAttribute('style-emphasis') === 'soft' && trig1.getAttribute('style-tone') === 'neutral' &&
+    trig3.getAttribute('style-emphasis') === 'ghost' && trig3.getAttribute('style-tone') === 'muted',
+    'Styles: the active pill trigger uses style-emphasis="soft", inactive triggers "ghost"'
   );
 
   // ==========================================
@@ -90,13 +120,13 @@ export async function testTabs(mountPoint, assert) {
 
   assert(
     trig3.getAttribute('data-state') === 'active' &&
-    cont3.style.display === '',
+    !cont3.hidden,
     'Interaction: Clicking a non-disabled trigger updates the active tab state'
   );
 
   assert(
     trig1.getAttribute('data-state') === 'inactive' &&
-    cont1.style.display === 'none',
+    cont1.hidden,
     'Interaction: Clicking a new trigger correctly deactivates the previously active tab'
   );
 
@@ -151,7 +181,7 @@ export async function testTabs(mountPoint, assert) {
   await nextTick();
   assert(
     ctrlTrigB.getAttribute('data-state') === 'active' &&
-    ctrlContB.style.display === '',
+    !ctrlContB.hidden,
     'Reactivity (External Update): Mutating the bound signal immediately updates the tab DOM state'
   );
 
@@ -161,5 +191,28 @@ export async function testTabs(mountPoint, assert) {
   assert(
     controlledSignal.value === 'a',
     'Reactivity (Internal Interaction): Clicking a controlled tab fires onValueChange to sync the external signal'
+  );
+
+  assert(
+    ctrlTrigA.getAttribute('data-state') === 'active',
+    'Reactivity (Controlled): the active tab follows the parent-owned value'
+  );
+
+  // ==========================================
+  // --- DEFAULTS, VALUE TYPES & NESTING ---
+  // ==========================================
+  const outerTrig1 = document.getElementById('outer-trig-1').firstElementChild;
+  const outerCont2 = document.getElementById('outer-cont-2').firstElementChild;
+  const innerTrig1 = document.getElementById('inner-trig-1').firstElementChild;
+  const innerTrig2 = document.getElementById('inner-trig-2').firstElementChild;
+
+  assert(
+    outerTrig1.getAttribute('data-state') === 'active' && outerCont2.hidden,
+    'Defaults: without a defaultValue the first trigger is active, and numeric values match their string attributes'
+  );
+
+  assert(
+    innerTrig2.getAttribute('data-state') === 'active' && innerTrig1.getAttribute('data-state') === 'inactive',
+    'Nesting: the outer Tabs does not overwrite the state of a nested Tabs'
   );
 }

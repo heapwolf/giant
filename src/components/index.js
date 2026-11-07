@@ -177,22 +177,21 @@ const SOURCES = {
   'SSR && SSG': [['Node.js (server.js)', './server.js'], ['Rust (lib.rs)', './../lib.rs']],
 };
 
+// Fetched once per page: the async component may render several times before the files arrive.
+let sources;
+const loadSources = () => sources ??= Promise.all(Object.values(SOURCES).flat().map(async ([label, url]) => {
+  try {
+    const code = await (await fetch(url)).text();
+    // flatten '../../giant.js' style imports so server.js works when copy-pasted
+    return [label, url.endsWith('server.js') ? code.replace(/(['"])(?:\.\.\/)+/g, '$1./') : code];
+  } catch (e) {
+    return [label, `// Error: ${e.message}`];
+  }
+})).then(Object.fromEntries);
+
 export const SourceViewer = component(async function SourceViewer() {
   const activeTab = signal.activeTab('Source');
-  const files = signal.files(null);
-
-  if (!files.value) {
-    const load = async ([label, url]) => {
-      try {
-        const code = await (await fetch(url)).text();
-        // flatten '../../giant.js' style imports so server.js works when copy-pasted
-        return [label, url.endsWith('server.js') ? code.replace(/(['"])(?:\.\.\/)+/g, '$1./') : code];
-      } catch (e) {
-        return [label, `// Error: ${e.message}`];
-      }
-    };
-    files.value = Object.fromEntries(await Promise.all(Object.values(SOURCES).flat().map(load)));
-  }
+  const files = await loadSources();
 
   return div(
     { ...STACK('large'), 'style-margin': 'inline-auto', 'style-width': 'full', 'style-max-width': 'xxlarge' },
@@ -202,7 +201,7 @@ export const SourceViewer = component(async function SourceViewer() {
       ...Object.keys(SOURCES).map(label => {
         const isActive = activeTab.value === label;
         return button({
-          onClick: () => { activeTab.value = label; },
+          onclick: () => { activeTab.value = label; },
           'style-emphasis': isActive ? 'soft' : 'ghost',
           'style-tone': isActive ? undefined : 'muted',
           'style-weight': 'medium', 'style-radius': 'small', 'style-pad-block': 'small', 'style-pad-inline': 'large',
@@ -210,35 +209,35 @@ export const SourceViewer = component(async function SourceViewer() {
         }, label);
       })
     ),
-    CodeView({ tabs: SOURCES[activeTab.value].map(([label]) => ({ label, code: files.value[label] })) })
+    CodeView({ tabs: SOURCES[activeTab.value].map(([label]) => ({ label, code: files[label] })) })
   );
 });
 
-// Parallax: the hero text shrinks and fades as the page scrolls over it
+// Parallax: the hero text shrinks and fades as the page scrolls over it.
+// Frames only run while catching up to a scroll, so the page stays idle otherwise.
+let parallaxStarted = false;
 const startParallax = () => {
-  let target = window.scrollY;
-  let current = target;
-  let hero;
-  window.addEventListener('scroll', () => { target = window.scrollY; }, { passive: true });
+  parallaxStarted = true;
+  let current = window.scrollY;
+  let running = false;
   const frame = () => {
+    const target = window.scrollY;
     current += (target - current) * 0.8;
-    hero ||= document.getElementById('hero-text-container');
+    if (Math.abs(target - current) < 0.5) current = target;
+    const hero = document.getElementById('hero-text-container');
     if (hero) {
       const progress = Math.min(current / 600, 1);
       hero.style.transform = `scale(${1 - progress * 0.06})`;
       hero.style.opacity = Math.max(1 - progress * 1.5, 0);
     }
-    requestAnimationFrame(frame);
+    running = current !== target;
+    if (running) requestAnimationFrame(frame);
   };
-  requestAnimationFrame(frame);
+  window.addEventListener('scroll', () => { if (!running) { running = true; requestAnimationFrame(frame); } }, { passive: true });
 };
 
 export const ComponentsApp = component.ComponentsApp(() => {
-  const started = signal.parallaxStarted(false);
-  if (!started.value && !globalThis.isServer) {
-    startParallax();
-    started.value = true;
-  }
+  if (!parallaxStarted && !globalThis.isServer) startParallax();
 
   const trigger = (value, label) => TabsTrigger({ value }, label);
 

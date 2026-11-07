@@ -82,13 +82,8 @@ export const RadioItem = component.RadioItem(({ value, disabled = false, ...rest
       'style-interactive': disabled ? 'disabled' : undefined,
       ...rest
     },
-    // 2px ring + xsmall padding around an 8px dot = 20px
-    div(
-      { 'data-radio-target': 'circle', 'aria-hidden': 'true', 'style-layout': 'center', 'style-border': 'thick', 'style-surface': 'base', ...PART },
-      div({ 'data-radio-target': 'dot', 'style-layout': 'block', ...PART })
-    ),
-    // the real radio, invisible and stretched over the item so it takes clicks, focus and arrow keys
-    // TODO(style): no focus-within ring for a non-field container, so keyboard focus is not drawn
+    // the real radio, invisible and stretched over the item so it takes clicks, focus and arrow keys;
+    // it comes first so giant.css can style the circle after it (input:hover + circle) without :has()
     input({
       'data-radio-target': 'input',
       type: 'radio',
@@ -102,6 +97,11 @@ export const RadioItem = component.RadioItem(({ value, disabled = false, ...rest
       'style-interactive': disabled ? 'disabled' : 'clickable',
       'style-visibility': 'invisible',
     }),
+    // 2px ring + xsmall padding around an 8px dot = 20px
+    div(
+      { 'data-radio-target': 'circle', 'aria-hidden': 'true', 'style-layout': 'center', 'style-border': 'thick', 'style-surface': 'base', ...PART },
+      div({ 'data-radio-target': 'dot', 'style-layout': 'block', ...PART })
+    ),
     div({ 'style-text': 'small', 'style-weight': 'medium' }, ...children)
   )
 );

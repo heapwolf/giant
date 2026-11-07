@@ -180,8 +180,8 @@
 
   :focus-visible { outline: 2px solid color-mix(in oklch, var(--fg) 60%, transparent); outline-offset: 2px; }
   :focus:not(:focus-visible) { outline: none; }
-  /* a custom control wrapping an invisible native input shows the input's focus */
-  :has(> [style-visibility="invisible"]:focus-visible) { outline: 2px solid color-mix(in oklch, var(--fg) 60%, transparent); outline-offset: 2px; }
+  /* an invisible native input layered over a custom control comes first; the indicator after it shows its focus */
+  [style-visibility="invisible"]:focus-visible + [aria-hidden="true"] { outline: 2px solid color-mix(in oklch, var(--fg) 60%, transparent); outline-offset: 2px; }
   table { border-collapse: collapse; border-spacing: 0; }
   ::selection { background-color: color-mix(in oklch, var(--accent) 25%, transparent); }
 
@@ -449,22 +449,27 @@
     box-shadow: var(--shadow-small);
     transition: translate var(--duration-fast) cubic-bezier(0.2, 0, 0.2, 1), scale var(--duration-fast) cubic-bezier(0.2, 0, 0.2, 1), box-shadow var(--duration-fast) ease;
   }
-  :is(button, [style-interactive="clickable"], [style-interactive="drag"]):hover:not(:disabled, :has(:disabled)) [style-emphasis="knob"] {
+  :is(button, [style-interactive="clickable"], [style-interactive="drag"]):hover:not(:disabled) [style-emphasis="knob"] {
     box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 12%, transparent), var(--shadow-small);
   }
-  :is(button, [style-interactive="clickable"], [style-interactive="drag"]):active:not(:disabled, :has(:disabled)) [style-emphasis="knob"] {
+  :is(button, [style-interactive="clickable"], [style-interactive="drag"]):active:not(:disabled) [style-emphasis="knob"] {
     scale: 0.85;
   }
-  /* checkbox and radio indicators: stronger border and a halo while the control is hovered */
-  :is([role="checkbox"], :has(> input[type="radio"])) > [aria-hidden="true"][style-border] {
+  /* checkbox and radio indicators: stronger border and a halo while the control is hovered.
+     No :has() here: it is checked against every element on every DOM change and stalls large pages. */
+  [role="checkbox"] > [aria-hidden="true"][style-border],
+  [style-visibility="invisible"] + [aria-hidden="true"][style-border] {
     transition: background-color var(--duration-fast) ease, border-color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
   }
-  :is([role="checkbox"]:not([aria-disabled="true"]), :has(> input[type="radio"]:not(:disabled))):hover > [aria-hidden="true"][style-border] {
+  [role="checkbox"]:not([aria-disabled="true"]):hover > [aria-hidden="true"][style-border],
+  [style-visibility="invisible"]:not(:disabled):hover + [aria-hidden="true"][style-border] {
     box-shadow: 0 0 0 4px color-mix(in oklch, var(--tone) 12%, transparent);
   }
-  :is([role="checkbox"]:not([aria-disabled="true"]), :has(> input[type="radio"]:not(:disabled))):hover > [aria-hidden="true"][style-border]:not([style-emphasis="solid"]) {
+  [role="checkbox"]:not([aria-disabled="true"]):hover > [aria-hidden="true"][style-border]:not([style-emphasis="solid"]),
+  [style-visibility="invisible"]:not(:disabled):hover + [aria-hidden="true"][style-border]:not([style-emphasis="solid"]) {
     border-color: color-mix(in oklch, var(--tone) 45%, transparent);
   }
+
   [style-emphasis]:focus-visible {
     outline: 2px solid color-mix(in oklch, var(--tone) 60%, transparent);
     outline-offset: 2px;
